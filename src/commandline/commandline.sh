@@ -7,6 +7,22 @@ source "$RUN_DIR/src/deployer/deployer.sh"
 # INFO: New additions start from here
 DEFAULT_CONFIG_FILE="$RUN_DIR/config/config.ini"
 
+# Resolve invoking user robustly (handles sudo)
+resolve_invoker_user() {
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    printf '%s\n' "$SUDO_USER"
+    return
+  fi
+  if invoker="$(logname 2>/dev/null)"; then
+    [[ -n "$invoker" ]] && printf '%s\n' "$invoker" && return
+  fi
+  if [[ -n "${LOGNAME:-}" && "${LOGNAME}" != "root" ]]; then
+    printf '%s\n' "$LOGNAME"
+    return
+  fi
+  whoami
+}
+
 function install_crudini() {
     if ! command -v crudini &> /dev/null; then
         logWithLevel "$INFO" "crudini not found. Attempting to install..."
@@ -59,8 +75,8 @@ function loadConfigFromFile() {
     local config_k8s_user=$(crudini --get "$config_path" environment user 2>/dev/null)
     if [[ -n "$config_k8s_user" ]]; then
         if [[ "$config_k8s_user" == "\$USER" || "$config_k8s_user" == '$USER' ]]; then
-            k8s_user="$USER"
-            logWithLevel "$INFO" "Expanded '\$USER' in config to actual username: $k8s_user"
+            k8s_user="$(resolve_invoker_user)"
+            logWithLevel "$INFO" "Expanded '\$USER' in config to invoking username: $k8s_user"
         else
             k8s_user="$config_k8s_user"
         fi
