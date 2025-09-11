@@ -10,29 +10,29 @@
 
 ## Writing SD card.
 1. On your PC, install Raspberry Pi Imager. Here, download for your machine
-<img width="800" height="412" alt="image" src="https://github.com/user-attachments/assets/6b9a5ae5-9f83-41de-907a-23294da2f318" />
+<img width="800" height="412" alt="image" src="https://github.com/user-attachments/assets/d94b689c-16a5-40bd-a2e6-92d28501410e" />
 
 2. Now, click on Next \
    This pop-up will come.
 Note: I have already configured my sd-card that's why I am seeing all the options.
 
-<img width="800" height="412" alt="image" src="https://github.com/user-attachments/assets/2a51f6e4-7d20-47fc-8874-483a01513174" />
+<img width="800" height="412" alt="image" src="https://github.com/user-attachments/assets/be7f9adb-e762-4396-a0c4-2161cd7c3025" />
 
 
 3. For the first time, you'll see something like this.
 
 OR if you click on `No, Clear Settings` and then again click on next, you'll see something like this.
 
-<img width="800" height="408" alt="image" src="https://github.com/user-attachments/assets/c64bfcc5-ba65-4501-a822-e104ff85d821" />
+<img width="800" height="408" alt="image" src="https://github.com/user-attachments/assets/80c50d42-31bc-4423-8ebf-13a8981c96f8" />
 
 
 4. Click on Edit Settings. NOTE: REMEMBER HOSTNAME, USERNAME AND PASSWORD. This will be useful when we SSH.
 
 By Default, you'll see this.
 
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/a3ef42ac-b2f8-4912-a32e-7bb09621e734" />
+<img width="1919" height="1079" alt="Screenshot 2025-08-14 142220" src="https://github.com/user-attachments/assets/3f1bff4b-9a6f-45cd-9873-e9f8502809aa" />
 
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/15aabc39-c552-4864-896b-e238706186ce" />
+<img width="1919" height="1079" alt="Screenshot 2025-08-14 142240" src="https://github.com/user-attachments/assets/3640cbcb-3d09-4085-a150-4eb8f021719d" />
 
 
 5. Here, you've to
@@ -45,13 +45,13 @@ By Default, you'll see this.
 - and select the *locale settings * accordingly. I have kept it Asia/kolkata
 - Keyboard Layout: "us"
 
-<img width="1910" height="1079" alt="image" src="https://github.com/user-attachments/assets/b838a2c1-8bea-46ce-a471-185a5757663a" />
+<img width="1910" height="1079" alt="Screenshot 2025-08-14 142121" src="https://github.com/user-attachments/assets/c0d84cec-b9e1-4a97-a4af-812d632fdc0b" />
 
 6. Now in SERVICES
 Enable SSH and "Use password authentication" \
 Like this,
 
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/d0cdb3dc-497f-4f71-80d5-ea0246f9e2b7" />
+<img width="1919" height="1079" alt="Screenshot 2025-08-14 142315" src="https://github.com/user-attachments/assets/45e33592-1fc8-457c-a44e-5cd5419560c0" />
 
 SAVE
 YES
@@ -92,7 +92,7 @@ Approximate round-trip times in milliseconds:
 
 OR you can log in to your router portal and see the IP address to log in
 
-<img width="957" height="83" alt="image" src="https://github.com/user-attachments/assets/42a32413-9441-4044-864d-2fcd10db71a8" />
+<img width="957" height="83" alt="Screenshot 2025-08-14 143024" src="https://github.com/user-attachments/assets/9295e52f-14fd-4955-9535-bd33b5970058" />
 
 9. Moment of Truth. SSH.
 `ssh <username>@<ip-addr>`
