@@ -10,29 +10,30 @@
 
 ## Writing SD card.
 1. On your PC, install Raspberry Pi Imager. Here, download for your machine
-<img width="800" height="412" alt="image" src="https://github.com/user-attachments/assets/d94b689c-16a5-40bd-a2e6-92d28501410e" />
+
+<img width="800" height="412" alt="image" src="./pi-images/image-01.png" />
 
 2. Now, click on Next \
    This pop-up will come.
 Note: I have already configured my sd-card that's why I am seeing all the options.
 
-<img width="800" height="412" alt="image" src="https://github.com/user-attachments/assets/be7f9adb-e762-4396-a0c4-2161cd7c3025" />
+<img width="800" height="412" alt="image" src="./pi-images/image-02.png" />
 
 
 3. For the first time, you'll see something like this.
 
 OR if you click on `No, Clear Settings` and then again click on next, you'll see something like this.
 
-<img width="800" height="408" alt="image" src="https://github.com/user-attachments/assets/80c50d42-31bc-4423-8ebf-13a8981c96f8" />
+<img width="800" height="408" alt="image" src="./pi-images/image-03.png" />
 
 
 4. Click on Edit Settings. NOTE: REMEMBER HOSTNAME, USERNAME AND PASSWORD. This will be useful when we SSH.
 
 By Default, you'll see this.
 
-<img width="1919" height="1079" alt="Screenshot 2025-08-14 142220" src="https://github.com/user-attachments/assets/3f1bff4b-9a6f-45cd-9873-e9f8502809aa" />
+<img width="800" height="412" alt="Screenshot 2025-08-14 142220" src="./pi-images/image-04.png" />
 
-<img width="1919" height="1079" alt="Screenshot 2025-08-14 142240" src="https://github.com/user-attachments/assets/3640cbcb-3d09-4085-a150-4eb8f021719d" />
+<img width="800" height="412" alt="Screenshot 2025-08-14 142240" src="./pi-images/image-05.png" />
 
 
 5. Here, you've to
@@ -41,17 +42,17 @@ By Default, you'll see this.
 - Enable set username and password
 - Enable Configure wireless LAN. It will fill in the details of the wifi network you're connected to. \
 - Select "IN" for Wireless LAN country. If you're in India. \
-  ### **Here, I have selected 'US'. I was not able to connect to the 5GHz network of my router.**
+  ### **Here, I have selected 'US'. because, with Wireless LAN country: IN. I was not able to connect to the 5GHz network of my router.**
 - and select the *locale settings * accordingly. I have kept it Asia/kolkata
 - Keyboard Layout: "us"
 
-<img width="1910" height="1079" alt="Screenshot 2025-08-14 142121" src="https://github.com/user-attachments/assets/c0d84cec-b9e1-4a97-a4af-812d632fdc0b" />
+<img width="800" height="412" alt="Screenshot 2025-08-14 142121" src="./pi-images/image-06.png" />
 
 6. Now in SERVICES
 Enable SSH and "Use password authentication" \
 Like this,
 
-<img width="1919" height="1079" alt="Screenshot 2025-08-14 142315" src="https://github.com/user-attachments/assets/45e33592-1fc8-457c-a44e-5cd5419560c0" />
+<img width="800" height="412" alt="Screenshot 2025-08-14 142315" src="./pi-images/image-07.png" />
 
 SAVE
 YES
@@ -92,7 +93,7 @@ Approximate round-trip times in milliseconds:
 
 OR you can log in to your router portal and see the IP address to log in
 
-<img width="957" height="83" alt="Screenshot 2025-08-14 143024" src="https://github.com/user-attachments/assets/9295e52f-14fd-4955-9535-bd33b5970058" />
+<img width="500" height="50" alt="router portal image" src="./pi-images/image-08.png" />
 
 9. Moment of Truth. SSH.
 `ssh <username>@<ip-addr>`
