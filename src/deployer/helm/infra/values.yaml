@@ -236,6 +236,10 @@ redis:
 ############### Elasticsearch and Kibana  ####################
 elasticsearch:
   enabled: true
+  image :
+    registry: docker.io
+    repository: bitnamilegacy/elasticsearch
+    tag: 8.10.4-debian-11-r0
   #fullnameOverride: "fredelastic"
 
   security:
@@ -311,6 +315,7 @@ mysql:
     rootPassword: "mysqlpw"
     # rootPassword: "ethieTieCh8ahv"
   image:
+    repository: bitnamilegacy/mysql
     tag: "5.7"
     debug: false
   initdbScripts:

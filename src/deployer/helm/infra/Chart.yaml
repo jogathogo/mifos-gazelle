@@ -2,7 +2,7 @@ apiVersion: v2
 description: Helm chart formifos-gazelle infrastructure services
 name: gazelle-infra
 version: 0.1.0
-appVersion: "kafka: 3.6.0; console: 0.6.6; mongodb: 7.0.2; mongo-express: 1.0.2; elasticsearch:19.9.2; redis: 17.11.6"
+appVersion: "kafka: 3.6.0; console: 0.6.6; mongodb: 7.0.2; mongo-express: 1.0.2; elasticsearch:8.10.4; redis: 17.11.6"
 home: https://github.com/openMF/mifos-gazelle
 #icon: 
 sources:
