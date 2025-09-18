@@ -283,7 +283,6 @@ function cleanUp ()
 
     mode="cleanup"
     echo "exiting via cleanUp function" 
-    #envSetupMain "$mode" "k3s" "1.32" "$environment"
 
     # exit shell script with error code 2
     # if omitted, shell script will continue execution

@@ -72,7 +72,9 @@ waitForPodReadyByPartialName() {
   return 1
 }
 
-deployBPMS() {
+deployBPMNs() {
+  echo "  debug   Deploying BPMN diagrams to Zeebe workflow engine "
+
   local host="https://zeebeops.mifos.gazelle.test/zeebe/upload"
   local DEBUG=false
   local successful_uploads=0
@@ -428,7 +430,7 @@ function deployPH(){
   deployPhHelmChartFromDir "$PH_NAMESPACE" "$gazelleChartPath" "$PH_VALUES_FILE"
   # now load the BPMS diagrams we do it here not in the helm chart so that 
   # we can count the sucessful BPMN uploads and be confident that they are working 
-  #deployBPMS
+  #deployBPMNs
   echo -e "\n${GREEN}============================"
   echo -e "Paymenthub Deployed"
   echo -e "============================${RESET}\n"
@@ -785,7 +787,7 @@ function deployApps {
     deployvNext
     deployPH
     DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR"
-    deployBPMS
+    deployBPMNs
     generateMifosXandVNextData
   else
     # Process each application in the space-separated list

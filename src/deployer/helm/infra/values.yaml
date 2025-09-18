@@ -268,7 +268,6 @@ elasticsearch:
         memory: "800Mi" # Allow some buffer over the heap for OS page cache and other overhead
         cpu: "400m" # 
 
-
   data:
     replicaCount: 0
   coordinating:
@@ -282,6 +281,11 @@ elasticsearch:
     hostname: elasticsearch.mifos.gazelle.test
     tls:
       - enabled: false
+
+  sysctlImage:
+    registry: docker.io
+    repository: bitnamilegacy/os-shell
+    tag: 11-debian-11-r90
 
   kibana:
     persistence:
