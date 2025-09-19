@@ -224,6 +224,8 @@ mongo-express:
 ## Reference: https://github.com/bitnami/charts/blob/main/bitnami/redis/values.yaml
 redis:
   enabled: true
+  image:
+    repository: bitnamilegacy/redis
   fullnameOverride: redis
   architecture: standalone
   auth:
@@ -236,6 +238,15 @@ redis:
 ############### Elasticsearch and Kibana  ####################
 elasticsearch:
   enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/elasticsearch
+    tag: 8.10.4-debian-11-r0
+  sysctlImage:
+    registry: docker.io
+    repository: bitnamilegacy/os-shell
+    tag: 11-debian-11-r90
+
   #fullnameOverride: "fredelastic"
 
   security:
@@ -312,6 +323,7 @@ mysql:
     # rootPassword: "ethieTieCh8ahv"
   image:
     tag: "5.7"
+    repository: bitnamilegacy/mysql
     debug: false
   initdbScripts:
     setup.sql: |-

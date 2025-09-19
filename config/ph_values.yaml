@@ -38,14 +38,15 @@ ph-ee-engine:
   operations:
     mysql:
       enabled: true
-    resources:
-      requests:
-        cpu: 1
-        memory: 100Mi
-      limits:
-        cpu: 2
-        memory: 300Mi
-    
+      image:
+        # repository: bitnamilegacy/mysql
+        tag: "5.7"
+        debug: false
+  
+  redis:
+    image:
+      repository: bitnamilegacy/redis
+
   camunda-platform:
     global:
       elasticsearch:

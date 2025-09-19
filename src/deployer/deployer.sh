@@ -345,11 +345,12 @@ function checkPHEEDependencies() {
   printf "    Installing Prometheus " 
   # Install Prometheus Operator if needed as it is a PHEE dependency
   local deployment_name="prometheus-operator"
-  deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' > /dev/null 2>&1)
+  # deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' > /dev/null 2>&1)
+  deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null)
   if [[ "$deployment_available" == "True" ]]; then
     echo -e "${RED} prometheus already installed -skipping install. ${RESET}" 
     return 0
-  fi 
+  fi
   LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
   su - $k8s_user -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl create -f - " >/dev/null 2>&1
   if [ $? -eq 0 ]; then
