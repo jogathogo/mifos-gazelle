@@ -281,7 +281,12 @@ function deleteResourcesInNamespaceMatchingPattern() {
           fi
         else
             printf "Deleting all resources in namespace $namespace "
-            kubectl delete all --all -n "$namespace" >> /dev/null 2>&1
+            #kubectl delete all --all -n "$namespace" >> /dev/null 2>&1
+            # fast delete by getting rid of grace-period waits
+            kubectl get pods -n "$namespace" --no-headers \
+              | awk '{print $1}' \
+              | xargs -r -I {} kubectl delete pod {} -n "$namespace" --grace-period=0 --force --ignore-not-found >> /dev/null 2>&1
+
             kubectl delete ns "$namespace" >> /dev/null 2>&1
             if [ $? -eq 0 ]; then
                 echo " [ok] "
