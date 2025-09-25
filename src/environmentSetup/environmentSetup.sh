@@ -156,7 +156,7 @@ function add_hosts {
                  bluebank-specapi.mifos.gazelle.test greenbank-specapi.mifos.gazelle.test  ) 
 
     PHEEHOSTS=(  ops.mifos.gazelle.test ops-bk.mifos.gazelle.test \
-                 bulk-connector.mifos.gazelle.test messagegateway.mifos.gazelle.test \
+                 bulk-processor.mifos.gazelle.test messagegateway.mifos.gazelle.test \
                  minio-console.mifos.gazelle.test  \
                  bill-pay.mifos.gazelle.test channel.mifos.gazelle.test \
                  channel-gsma.mifos.gazelle.test crm.mifos.gazelle.test \

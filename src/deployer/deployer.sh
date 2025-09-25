@@ -778,7 +778,7 @@ function deployApps {
   echo "redeploy is $redeploy"
 
   echo -e "${BLUE}Starting deployment for applications: $appsToDeploy...${RESET}"
-
+  
   # Special handling for 'all' as a block-deploy, matching the repo
   if [[ "$appsToDeploy" == "all" ]]; then
     echo -e "${BLUE}Deploying all apps ...${RESET}"
