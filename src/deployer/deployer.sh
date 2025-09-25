@@ -283,9 +283,10 @@ function deleteResourcesInNamespaceMatchingPattern() {
             printf "Deleting all resources in namespace $namespace "
             #kubectl delete all --all -n "$namespace" >> /dev/null 2>&1
             # fast delete by getting rid of grace-period waits
-            kubectl get pods -n "$namespace" --no-headers \
-              | awk '{print $1}' \
-              | xargs -r -I {} kubectl delete pod {} -n "$namespace" --grace-period=0 --force --ignore-not-found >> /dev/null 2>&1
+            # kubectl get pods -n "$namespace" --no-headers \
+            #   | awk '{print $1}' \
+            #   | xargs -r -I {} kubectl delete pod {} \
+            #     -n "$namespace" --grace-period=0 --force --ignore-not-found --wait=false >> /dev/null 2>&1
 
             kubectl delete ns "$namespace" >> /dev/null 2>&1
             if [ $? -eq 0 ]; then
@@ -333,18 +334,60 @@ function preparePaymentHubChart(){
   cloneRepo "$PHBRANCH" "$PH_REPO_LINK" "$APPS_DIR" "$PHREPO_DIR"  # needed for kibana and elastic secrets only 
   cloneRepo "$PH_EE_ENV_TEMPLATE_REPO_BRANCH" "$PH_EE_ENV_TEMPLATE_REPO_LINK" "$APPS_DIR" "$PH_EE_ENV_TEMPLATE_REPO_DIR"
 
-  # Update helm dependencies and repo index for ph-ee-engine
-  echo "    updating dependencies ph-ee-engine chart "
-  phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
-  su - $k8s_user -c "cd $phEEenginePath;  helm dep update" >> /dev/null 2>&1 
-  su - $k8s_user -c "cd $phEEenginePath;  helm repo index ."
+  # Helper: choose dep build vs update
+  function ensureHelmDeps() {
+    local chartPath=$1
+    local chartName=$(basename "$chartPath")
 
-  # Update helm dependencies and repo index for gazelle i.e. parent chart of ph-ee-engine 
-  echo "    updating dependencies gazelle chart "
+    echo "    ensuring dependencies for $chartName chart"
+    if [[ -f "$chartPath/Chart.lock" && -s "$chartPath/Chart.lock" ]]; then
+      # Count entries in Chart.lock and compare with .tgz files in charts/
+      local expected=$(grep -c "name:" "$chartPath/Chart.lock")
+      local actual=$(find "$chartPath/charts" -maxdepth 1 -name '*.tgz' 2>/dev/null | wc -l)
+
+      if [[ $actual -ge $expected && $expected -gt 0 ]]; then
+        echo "      charts/ already populated ($actual/$expected) → running helm dep build"
+        su - $k8s_user -c "cd $chartPath && helm dep build" >> /dev/null 2>&1
+      else
+        echo "      charts/ not populated correctly ($actual/$expected) → running helm dep update"
+        su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
+      fi
+    else
+      echo "      no Chart.lock found → running helm dep update"
+      su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
+    fi
+
+    # Always regenerate repo index
+    su - $k8s_user -c "cd $chartPath && helm repo index ." >> /dev/null 2>&1
+  }
+
+  # Run for ph-ee-engine
+  phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
+  ensureHelmDeps "$phEEenginePath"
+
+  # Run for gazelle (parent)
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
-  su - $k8s_user -c "cd $gazelleChartPath ; helm dep update >> /dev/null 2>&1 " 
-  su - $k8s_user -c "cd $gazelleChartPath ; helm repo index ."
+  ensureHelmDeps "$gazelleChartPath"
 }
+
+
+# function preparePaymentHubChart(){
+#   # Clone the repositories
+#   cloneRepo "$PHBRANCH" "$PH_REPO_LINK" "$APPS_DIR" "$PHREPO_DIR"  # needed for kibana and elastic secrets only 
+#   cloneRepo "$PH_EE_ENV_TEMPLATE_REPO_BRANCH" "$PH_EE_ENV_TEMPLATE_REPO_LINK" "$APPS_DIR" "$PH_EE_ENV_TEMPLATE_REPO_DIR"
+
+#   # Update helm dependencies and repo index for ph-ee-engine
+#   echo "    updating dependencies ph-ee-engine chart "
+#   phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
+#   su - $k8s_user -c "cd $phEEenginePath;  helm dep update" >> /dev/null 2>&1 
+#   su - $k8s_user -c "cd $phEEenginePath;  helm repo index ."
+
+#   # Update helm dependencies and repo index for gazelle i.e. parent chart of ph-ee-engine 
+#   echo "    updating dependencies gazelle chart "
+#   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
+#   su - $k8s_user -c "cd $gazelleChartPath ; helm dep update >> /dev/null 2>&1 " 
+#   su - $k8s_user -c "cd $gazelleChartPath ; helm repo index ."
+# }
 
 function checkPHEEDependencies() {
   printf "    Installing Prometheus " 
@@ -418,8 +461,11 @@ function deployPH(){
       deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
       deleteResourcesInNamespaceMatchingPattern "default"  #just removes prometheus at the moment
       manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
-      rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
-      rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
+      # TomD not sure why we would need to remove these chart tgz files
+      #      by doing so we ensure we need to run helm dep update each time
+      #      and that seems like a waste of time 
+      # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
+      # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
     fi
   fi 
   echo "Deploying PaymentHub EE"
@@ -735,8 +781,8 @@ function deleteApps {
     deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
     deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
     deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-    rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
-    rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
+    # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
+    # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
     deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
     deleteResourcesInNamespaceMatchingPattern "default"
   else
@@ -752,8 +798,8 @@ function deleteApps {
           ;;
         "phee")
           deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-          rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz
-          rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz
+          # rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz
+          # rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz
           echo "Handling Prometheus Operator resources in the default namespace as part of PHEE cleanup"
           LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
           su - "$k8s_user" -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl -n default delete -f -" > /dev/null 2>&1
