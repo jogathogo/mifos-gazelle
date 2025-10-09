@@ -51,7 +51,7 @@ environment="local"
 debug="false"      
 redeploy="true"    
 k8s_distro="k3s"       
-k8s_user_version="1.32"
+k8s_user_version="1.33"
 CONFIG_FILE_PATH="$DEFAULT_CONFIG_FILE"
 
 # Function to load configuration from the INI file using crudini

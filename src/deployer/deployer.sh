@@ -27,18 +27,26 @@ function isPodRunning() {
 }
 
 isDeployed() {
-    local app_name="$1" namespace="$2" pod_name="$3" full_pod_name
-    kubectl get namespace "$namespace" >/dev/null 2>&1 || { echo "false"; return; }
-    full_pod_name=$(kubectl get pods -n "$namespace" --no-headers -o custom-columns=":metadata.name" | grep -i "$pod_name" | head -1)
-    if [[ -z "$full_pod_name" ]]; then
-        echo "false"
-        return
+    local namespace="$1"
+    # Check if namespace exists
+    if ! kubectl get namespace "$namespace" >/dev/null 2>&1; then
+        return 1
     fi
-    if isPodRunning "$full_pod_name" "$namespace"; then
-        echo "true"
-    else
-        echo "false"
-    fi
+    
+    # Check if there are any workload resources (deployments, statefulsets, daemonsets)
+    # AND at least one running pod in the namespace
+    local workload_count
+    local running_pods
+    
+    workload_count=$(kubectl get deployments,statefulsets,daemonsets -n "$namespace" \
+        --no-headers 2>/dev/null | wc -l)
+    
+    running_pods=$(kubectl get pods -n "$namespace" \
+        --field-selector=status.phase=Running \
+        --no-headers 2>/dev/null | wc -l)
+    
+    # App is deployed if it has workloads AND at least one running pod
+    [[ "$workload_count" -gt 0 ]] && [[ "$running_pods" -gt 0 ]]
 }
 
 waitForPodReadyByPartialName() {
@@ -72,7 +80,7 @@ waitForPodReadyByPartialName() {
   return 1
 }
 
-deployBPMS() {
+deployBPMNs() {
   local host="https://zeebeops.mifos.gazelle.test/zeebe/upload"
   local DEBUG=false
   local successful_uploads=0
@@ -370,25 +378,6 @@ function preparePaymentHubChart(){
   ensureHelmDeps "$gazelleChartPath"
 }
 
-
-# function preparePaymentHubChart(){
-#   # Clone the repositories
-#   cloneRepo "$PHBRANCH" "$PH_REPO_LINK" "$APPS_DIR" "$PHREPO_DIR"  # needed for kibana and elastic secrets only 
-#   cloneRepo "$PH_EE_ENV_TEMPLATE_REPO_BRANCH" "$PH_EE_ENV_TEMPLATE_REPO_LINK" "$APPS_DIR" "$PH_EE_ENV_TEMPLATE_REPO_DIR"
-
-#   # Update helm dependencies and repo index for ph-ee-engine
-#   echo "    updating dependencies ph-ee-engine chart "
-#   phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
-#   su - $k8s_user -c "cd $phEEenginePath;  helm dep update" >> /dev/null 2>&1 
-#   su - $k8s_user -c "cd $phEEenginePath;  helm repo index ."
-
-#   # Update helm dependencies and repo index for gazelle i.e. parent chart of ph-ee-engine 
-#   echo "    updating dependencies gazelle chart "
-#   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
-#   su - $k8s_user -c "cd $gazelleChartPath ; helm dep update >> /dev/null 2>&1 " 
-#   su - $k8s_user -c "cd $gazelleChartPath ; helm repo index ."
-# }
-
 function checkPHEEDependencies() {
   printf "    Installing Prometheus " 
   # Install Prometheus Operator if needed as it is a PHEE dependency
@@ -450,40 +439,46 @@ function deployPhHelmChartFromDir(){
 }
 
 function deployPH(){
-  # TODO make this a global variable
-  gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
-  result=$(isDeployed "phee" "$PHEE_NAMESPACE" "ph-ee-connector-mojaloop-java" )
-  if [[ "$result" == "true" ]]; then
-    if [[ "$redeploy" == "false" ]]; then
-      echo "$PH_RELEASE_NAME is already deployed. Skipping deployment."
-      return
-    else # need to delete prior to redeploy 
-      deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-      deleteResourcesInNamespaceMatchingPattern "default"  #just removes prometheus at the moment
-      manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
-      # TomD not sure why we would need to remove these chart tgz files
-      #      by doing so we ensure we need to run helm dep update each time
-      #      and that seems like a waste of time 
-      # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
-      # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
+    # TODO make this a global variable in .ini file
+    gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
+    
+    if isDeployed "$PH_NAMESPACE"; then      
+        if [[ "$redeploy" == "false" ]]; then
+            echo "$PH_RELEASE_NAME is already deployed & redeploy = false . Skipping deployment."
+            return
+        else
+            # need to delete prior to redeploy
+            echo "Redeploying $PH_RELEASE_NAME - deleting existing deployment and SECRETS first"
+            deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
+            deleteResourcesInNamespaceMatchingPattern "default" #just removes prometheus at the moment
+            manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
+            manageElasticSecrets delete "$PH_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
+            # TomD not sure why we would need to remove these chart tgz files
+            # by doing so we ensure we need to run helm dep update each time
+            # and that seems like a waste of time
+            # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
+            # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
+        fi
     fi
-  fi 
-  echo "Deploying PaymentHub EE"
-  createNamespace "$PH_NAMESPACE"
-  checkPHEEDependencies
-  preparePaymentHubChart
-  manageElasticSecrets create "$PH_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
-  manageElasticSecrets create "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
-  createIngressSecret "$PH_NAMESPACE" "$GAZELLE_DOMAIN" sandbox-secret
-  
-  # now deploy the helm chart 
-  deployPhHelmChartFromDir "$PH_NAMESPACE" "$gazelleChartPath" "$PH_VALUES_FILE"
-  # now load the BPMS diagrams we do it here not in the helm chart so that 
-  # we can count the sucessful BPMN uploads and be confident that they are working 
-  #deployBPMS
-  echo -e "\n${GREEN}============================"
-  echo -e "Paymenthub Deployed"
-  echo -e "============================${RESET}\n"
+    
+    echo "Deploying PaymentHub EE"
+    createNamespace "$PH_NAMESPACE"
+    checkPHEEDependencies
+    preparePaymentHubChart
+    manageElasticSecrets create "$PH_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
+    manageElasticSecrets create "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
+    createIngressSecret "$PH_NAMESPACE" "$GAZELLE_DOMAIN" sandbox-secret
+    
+    # now deploy the helm chart
+    deployPhHelmChartFromDir "$PH_NAMESPACE" "$gazelleChartPath" "$PH_VALUES_FILE"
+    
+    # now load the BPMS diagrams we do it here not in the helm chart so that
+    # we can count the sucessful BPMN uploads and be confident that they are working
+    #deployBPMS
+    
+    echo -e "\n${GREEN}============================"
+    echo -e "Paymenthub Deployed"
+    echo -e "============================${RESET}\n"
 }
 
 function createNamespace () {
@@ -506,18 +501,19 @@ function createNamespace () {
 
 function deployInfrastructure () {
   local redeploy="$1"
-
   printf "==> Deploying infrastructure \n"
-  result=$(isDeployed "infra" "$INFRA_NAMESPACE" "mysql-0")
-  if [[ "$result" == "true" ]]; then
+  
+  if isDeployed "$INFRA_NAMESPACE"; then
+      echo "Infrastructure is already deployed"
+      
       if [[ "$redeploy" == "false" ]]; then
-          echo "    infrastructure is already deployed. Skipping deployment."
+          echo "Infrastructure is already deployed && redeploy = false. Skipping deployment."
           return
       else
+          echo "Redeploying infrastructure - deleting existing deployment first"
           deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
       fi
   fi
-
   createNamespace $INFRA_NAMESPACE
 
   # Update helm dependencies and repo index for infra chart 
@@ -541,44 +537,44 @@ function deployInfrastructure () {
 }
 
 function applyKubeManifests() {
-    if [ "$#" -ne 2 ]; then
-        echo "Usage: applyKubeManifests <directory> <namespace>"
-        return 1
-    fi
-    local directory="$1"
-    local namespace="$2"
+  if [ "$#" -ne 2 ]; then
+      echo "Usage: applyKubeManifests <directory> <namespace>"
+      return 1
+  fi
+  local directory="$1"
+  local namespace="$2"
 
-    # Check if the directory exists.
-    if [ ! -d "$directory" ]; then
-        echo "Directory '$directory' not found."
-        return 1
-    fi
+  # Check if the directory exists.
+  if [ ! -d "$directory" ]; then
+      echo "Directory '$directory' not found."
+      return 1
+  fi
 
-    # Apply persistence-related manifests first
-    for file in "$directory"/*persistence*.yaml; do
-      if [ -f "$file" ]; then
-        su - $k8s_user -c "kubectl apply -f $file -n $namespace" >> /dev/null 2>&1
-        if [ $? -ne 0 ]; then
-          echo -e "${RED}Failed to apply persistence manifest $file.${RESET}"
-        fi
+  # Apply persistence-related manifests first
+  for file in "$directory"/*persistence*.yaml; do
+    if [ -f "$file" ]; then
+      su - $k8s_user -c "kubectl apply -f $file -n $namespace" >> /dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to apply persistence manifest $file.${RESET}"
       fi
-    done
+    fi
+  done
 
-    # Apply other manifests
-    for file in "$directory"/*.yaml; do
-      if [[ "$file" != *persistence*.yaml ]]; then
-        su - $k8s_user -c "kubectl apply -f $file -n $namespace" >> /dev/null 2>&1
-        if [ $? -ne 0 ]; then
-          echo -e "${RED}Failed to apply Kubernetes manifest $file.${RESET}"
-        fi
+  # Apply other manifests
+  for file in "$directory"/*.yaml; do
+    if [[ "$file" != *persistence*.yaml ]]; then
+      su - $k8s_user -c "kubectl apply -f $file -n $namespace" >> /dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to apply Kubernetes manifest $file.${RESET}"
       fi
-    done
-    # su - $k8s_user -c "kubectl apply -f $directory -n $namespace"  >> /dev/null 2>&1 
-    # if [ $? -eq 0 ]; then
-    #     echo -e "    Kubernetes manifests applied successfully."
-    # else
-    #     echo -e "${RED}Failed to apply Kubernetes manifests.${RESET}"
-    # fi
+    fi
+  done
+  # su - $k8s_user -c "kubectl apply -f $directory -n $namespace"  >> /dev/null 2>&1 
+  # if [ $? -eq 0 ]; then
+  #     echo -e "    Kubernetes manifests applied successfully."
+  # else
+  #     echo -e "${RED}Failed to apply Kubernetes manifests.${RESET}"
+  # fi
 }
 
 
@@ -665,41 +661,51 @@ function vnext_configure_ttk {
 
 
 function deployvNext() {
-  printf "\n==> Deploying Mojaloop vNext application \n"
-  
-  result=$(isDeployed "vnext" "$VNEXT_NAMESPACE" "reporting-api-svc" )
-  if [[ "$result" == "true" ]]; then
-    if [[ "$redeploy" == "false" ]]; then
-      echo "    vNext application is already deployed. Skipping deployment."
-      return
-    else # need to delete prior to redeploy 
-      deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
+    printf "\n==> Deploying Mojaloop vNext application \n"
+    
+    if isDeployed "$VNEXT_NAMESPACE"; then
+        echo "vNext application is already deployed"
+        
+        if [[ "$redeploy" == "false" ]]; then
+            echo "vNext application is already deployed & redeploy = false. Skipping deployment."
+            return
+        else
+            # need to delete prior to redeploy
+            echo "Redeploying vNext - deleting existing deployment first"
+            deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
+        fi
     fi
-  fi 
-  createNamespace "$VNEXT_NAMESPACE"
-  cloneRepo "$VNEXTBRANCH" "$VNEXT_REPO_LINK" "$APPS_DIR" "$VNEXTREPO_DIR"
-  # remove the TTK-CLI pod as it is not needed and comes up in error mode 
-  rm  -f "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests/ttk/ttk-cli.yaml" > /dev/null 2>&1
-  configurevNext  # make any local mods to manifests
-  vnext_restore_demo_data $CONFIG_DIR "mongodump.gz" $INFRA_NAMESPACE
-  for index in "${!VNEXT_LAYER_DIRS[@]}"; do
-    folder="${VNEXT_LAYER_DIRS[index]}"
-    applyKubeManifests "$folder" "$VNEXT_NAMESPACE" #>/dev/null 2>&1
-    if [ "$index" -eq 0 ]; then
-      echo -e "${BLUE}    Waiting for vnext cross cutting concerns to come up${RESET}"
-      sleep 10
-      echo -e "    Proceeding ..."
-    fi
-  done
-  ## don't do this by default for gazelle v1.1.0 as for v1.1.0 we now have Mifos greenbank/bluebank as much more realistic DFSPs 
-  ## It is true that in for vNext or subseqent we might want TTKs for debug and testing purposes hence leaving this here for the moment
-  ## vnext_configure_ttk $VNEXT_TTK_FILES_DIR  $VNEXT_NAMESPACE   # configure in the TTKs as participants 
-
-  echo -e "\n${GREEN}============================"
-  echo -e "vnext Deployed"
-  echo -e "============================${RESET}\n"
-
+    
+    createNamespace "$VNEXT_NAMESPACE"
+    cloneRepo "$VNEXTBRANCH" "$VNEXT_REPO_LINK" "$APPS_DIR" "$VNEXTREPO_DIR"
+    
+    # remove the TTK-CLI pod as it is not needed and comes up in error mode
+    rm -f "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests/ttk/ttk-cli.yaml" > /dev/null 2>&1
+    
+    configurevNext # make any local mods to manifests
+    vnext_restore_demo_data $CONFIG_DIR "mongodump.gz" $INFRA_NAMESPACE
+    
+    for index in "${!VNEXT_LAYER_DIRS[@]}"; do
+        folder="${VNEXT_LAYER_DIRS[index]}"
+        applyKubeManifests "$folder" "$VNEXT_NAMESPACE" #>/dev/null 2>&1
+        
+        if [ "$index" -eq 0 ]; then
+            echo -e "${BLUE} Waiting for vnext cross cutting concerns to come up${RESET}"
+            # TODO properly implement the wait here ..Devarsh was going to do this , is there a ticket ?
+            sleep 20
+            echo -e " Proceeding ..."
+        fi
+    done
+    
+    ## don't do this by default for gazelle v1.1.0 as for v1.1.0 we now have Mifos greenbank/bluebank as much more realistic DFSPs
+    ## It is true that in for vNext or subseqent we might want TTKs for debug and testing purposes hence leaving this here for the moment
+    ## vnext_configure_ttk $VNEXT_TTK_FILES_DIR $VNEXT_NAMESPACE # configure in the TTKs as participants
+    
+    echo -e "\n${GREEN}============================"
+    echo -e "vnext Deployed"
+    echo -e "============================${RESET}\n"
 }
+
 function DeployMifosXfromYaml() {
     manifests_dir=$1
     timeout_secs=${2:-600}  # Default timeout of 10 minutes if not specified
@@ -730,21 +736,20 @@ function DeployMifosXfromYaml() {
 }
 
 function generateMifosXandVNextData {
-  # generate load and syncronize MifosX accounts and vNext Oracle associations  
-  result_vnext=$(isDeployed "vnext" "$VNEXT_NAMESPACE" "reporting-api-svc" )
-  result_mifosx=$(isDeployed "mifosx" "$MIFOSX_NAMESPACE" "fineract-server" )
-
-  if [[ "$result_vnext" == "true" ]]  && [[ "$result_mifosx" == "true" ]] ; then
-    echo -e "${BLUE}Generating MifosX clients and accounts & registering associations with vNext Oracle ...${RESET}"
-    $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py > /dev/null 2>&1
-    if [[ "$?" -ne 0 ]]; then
-      echo -e "${RED}Error generating vNext clients and accounts ${RESET}"
-      echo " run $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py to investigate"
-      return 1 
+    # generate load and syncronize MifosX accounts and vNext Oracle associations
+    
+    if isDeployed "$VNEXT_NAMESPACE" && isDeployed "$MIFOSX_NAMESPACE"; then
+        echo -e "${BLUE}Generating MifosX clients and accounts & registering associations with vNext Oracle ...${RESET}"
+        $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py > /dev/null 2>&1
+        
+        if [[ "$?" -ne 0 ]]; then
+            echo -e "${RED}Error generating vNext clients and accounts ${RESET}"
+            echo " run $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py to investigate"
+            return 1
+        fi
+    else
+        echo -e "${YELLOW}vNext or MifosX is not running => skipping MifosX and vNext data generation ${RESET}"
     fi
-  else 
-    echo -e "${YELLOW}vNext or MifosX is not running => skipping MifosX and vNext data generation ${RESET}"
-  fi
 }
 
 
@@ -833,11 +838,14 @@ function deployApps {
   # Special handling for 'all' as a block-deploy, matching the repo
   if [[ "$appsToDeploy" == "all" ]]; then
     echo -e "${BLUE}Deploying all apps ...${RESET}"
-    deployInfrastructure "$redeploy"
-    deployvNext
-    deployPH
-    DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR"
-    deployBPMS
+    # deployInfrastructure "$redeploy"
+    # deployvNext
+    # deployPH
+    # DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR"
+    echo "about to deploy BPMNs"
+    deployBPMNs # deploy the BPMN processes to MifosX BPM Suite
+    echo "should have deployed  BPMNs"
+    exit 1
     generateMifosXandVNextData
   else
     # Process each application in the space-separated list
