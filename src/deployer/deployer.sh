@@ -838,14 +838,11 @@ function deployApps {
   # Special handling for 'all' as a block-deploy, matching the repo
   if [[ "$appsToDeploy" == "all" ]]; then
     echo -e "${BLUE}Deploying all apps ...${RESET}"
-    # deployInfrastructure "$redeploy"
-    # deployvNext
-    # deployPH
-    # DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR"
-    echo "about to deploy BPMNs"
+    deployInfrastructure "$redeploy"
+    deployvNext
+    deployPH
+    DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR"
     deployBPMNs # deploy the BPMN processes to MifosX BPM Suite
-    echo "should have deployed  BPMNs"
-    exit 1
     generateMifosXandVNextData
   else
     # Process each application in the space-separated list
