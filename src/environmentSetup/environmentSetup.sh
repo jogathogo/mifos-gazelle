@@ -156,7 +156,7 @@ function add_hosts {
                  bluebank-specapi.mifos.gazelle.test greenbank-specapi.mifos.gazelle.test  ) 
 
     PHEEHOSTS=(  ops.mifos.gazelle.test ops-bk.mifos.gazelle.test \
-                 bulk-connector.mifos.gazelle.test messagegateway.mifos.gazelle.test \
+                 bulk-processor.mifos.gazelle.test messagegateway.mifos.gazelle.test \
                  minio-console.mifos.gazelle.test  \
                  bill-pay.mifos.gazelle.test channel.mifos.gazelle.test \
                  channel-gsma.mifos.gazelle.test crm.mifos.gazelle.test \
@@ -544,7 +544,7 @@ function envSetupMain {
 
     HELM_VERSION="3.18.4"  # July 2025
     OS_VERSIONS_LIST=( 22 24 )
-    K8S_CURRENT_RELEASE_LIST=( "1.31" "1.32" ) 
+    K8S_CURRENT_RELEASE_LIST=( "1.33" "1.34" ) 
     CURRENT_RELEASE="false"
     k8s_user_home=""
     k8s_arch=`uname -p`  # what arch

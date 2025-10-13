@@ -7,6 +7,10 @@ global:
 kafka:
   enabled: true
   fullnameOverride: "kafka"
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/kafka
+    tag: 3.6.0-debian-11-r0 
   persistence:
     enabled: false
   externalAccess:
@@ -41,6 +45,14 @@ kafka:
   extraEnvVars:
     - name: KAFKA_CFG_ADVERTISED_LISTENERS
       value: PLAINTEXT://kafka:9092
+    # - name: KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+    #   value: "1"
+    # - name: KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR
+    #   value: "1"
+    # - name: KAFKA_CFG_DEFAULT_REPLICATION_FACTOR
+    #   value: "1"
+    # - name: KAFKA_CFG_MIN_INSYNC_REPLICAS
+    #   value: "1"
 
   auth:
     enabled: false
@@ -54,6 +66,10 @@ kafka:
     enabled: true
     persistence:
       enabled: false
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/zookeeper
+      tag: 3.9.1-debian-11-r1
     fullnameOverride: "zookeeper"
     heapOpts: "-Xms64M -Xmx256M"
 
@@ -291,6 +307,10 @@ elasticsearch:
       - enabled: false
 
   kibana:
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/kibana
+      tag: 8.10.4-debian-11-r0
     persistence:
       enabled: false
     env:
