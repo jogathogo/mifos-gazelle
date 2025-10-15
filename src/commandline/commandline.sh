@@ -38,6 +38,7 @@ function install_crudini() {
         fi
         if ! command -v crudini &> /dev/null; then
             logWithLevel "$ERROR" "Failed to install crudini. Exiting."
+            exit 1
         fi
         logWithLevel "$INFO" "crudini installed successfully."
     fi
@@ -46,12 +47,13 @@ function install_crudini() {
 # Global variables that will hold the final configuration.
 mode=""
 k8s_user=""
-apps="" 
+apps=""
 environment="local"
-debug="false"      
-redeploy="true"    
-k8s_distro="k3s"       
+debug="false"
+redeploy="true"
+k8s_distro="k3s"
 k8s_user_version="1.32"
+kubeconfig_path=""
 CONFIG_FILE_PATH="$DEFAULT_CONFIG_FILE"
 
 # Function to load configuration from the INI file using crudini
@@ -69,10 +71,16 @@ function loadConfigFromFile() {
     local config_mode=$(crudini --get "$config_path" general mode 2>/dev/null)
     if [[ -n "$config_mode" ]]; then mode="$config_mode"; fi
     local config_gazelle_domain=$(crudini --get "$config_path" general GAZELLE_DOMAIN 2>/dev/null)
-    if [[ -n "$config_gazelle_domain" ]]; then GAZELLE_DOMAIN="$config_gazelle_domain"; fi # GAZELLE_DOMAIN moved back here or to general for clarity
+    if [[ -n "$config_gazelle_domain" ]]; then GAZELLE_DOMAIN="$config_gazelle_domain"; fi
 
-    # Read [environment] section
-    local config_k8s_user=$(crudini --get "$config_path" environment user 2>/dev/null)
+    # Read [kubernetes] section
+    local config_environment=$(crudini --get "$config_path" kubernetes environment 2>/dev/null)
+    if [[ -n "$config_environment" ]]; then environment="$config_environment"; fi
+    local config_k8s_distro=$(crudini --get "$config_path" kubernetes k8s_distro 2>/dev/null)
+    if [[ -n "$config_k8s_distro" ]]; then k8s_distro="$config_k8s_distro"; fi
+    local config_k8s_version=$(crudini --get "$config_path" kubernetes k8s_version 2>/dev/null)
+    if [[ -n "$config_k8s_version" ]]; then k8s_user_version="$config_k8s_version"; fi
+    local config_k8s_user=$(crudini --get "$config_path" kubernetes k8s_user 2>/dev/null)
     if [[ -n "$config_k8s_user" ]]; then
         if [[ "$config_k8s_user" == "\$USER" || "$config_k8s_user" == '$USER' ]]; then
             k8s_user="$(resolve_invoker_user)"
@@ -81,7 +89,17 @@ function loadConfigFromFile() {
             k8s_user="$config_k8s_user"
         fi
     fi
-
+    local config_kubeconfig_path=$(crudini --get "$config_path" kubernetes kubeconfig_path 2>/dev/null)
+    echo "Config kubeconfig_path from file: $config_kubeconfig_path"
+    if [[ -n "$config_kubeconfig_path" ]]; then
+        if [[ "$config_kubeconfig_path" == "~/.kube/config" ]]; then
+            k8s_user_home=$(eval echo "~$k8s_user")
+            kubeconfig_path="$k8s_user_home/.kube/config"
+        else
+            kubeconfig_path="$config_kubeconfig_path"
+        fi
+    fi
+    echo "DEBUG Config kubeconfig_path from file: $config_kubeconfig_path"
     # Read app enablement flags and construct the 'apps' variable
     local enabled_apps_list=""
     local valid_apps=("infra" "vnext" "phee" "mifosx")
@@ -116,21 +134,7 @@ function loadConfigFromFile() {
             fi
         done
     done
-
-    # Log the effective config
-    # logWithLevel "$INFO" "Configuration loaded from $config_path:"
-    # logWithLevel "$INFO" "   mode: ${mode:-<not set>}"
-    # logWithLevel "$INFO" "   k8s_user: ${k8s_user:-<not set>}"
-    # logWithLevel "$INFO" "   apps: ${apps:-<not set>}"
-    # logWithLevel "$INFO" "   GAZELLE_DOMAIN: ${GAZELLE_DOMAIN:-<not set>}"
-    # logWithLevel "$INFO" "   MYSQL_SERVICE_NAME: ${MYSQL_SERVICE_NAME:-<not set>}"
-    # logWithLevel "$INFO" "   MYSQL_SERVICE_PORT: ${MYSQL_SERVICE_PORT:-<not set>}"
-    # logWithLevel "$INFO" "   LOCAL_PORT: ${LOCAL_PORT:-<not set>}"
-    # logWithLevel "$INFO" "   MAX_WAIT_SECONDS: ${MAX_WAIT_SECONDS:-<not set>}"
-    # logWithLevel "$INFO" "   MYSQL_HOST: ${MYSQL_HOST:-<not set>}"
 }
-
-# INFO: New additions are till here
 
 function welcome {
     echo -e "${BLUE}"
@@ -143,35 +147,36 @@ function welcome {
     echo -e "Mifos Gazelle - a Mifos Digital Public Infrastructure as a Solution (DaaS) deployment tool."
     echo -e "                deploying MifosX, PaymentHub EE and vNext on Kubernetes."
     echo -e "Version: $GAZELLE_VERSION"
-    echo 
+    echo
 }
-
-# INFO: Script Updation starts from here
 
 function showUsage {
     echo "
-    USAGE: $0 [-f <config_file_path>] -m [mode] -u [user] -a [apps] -e [environment] -d [true/false]
+    USAGE: $0 [-f <config_file_path>] -m [mode] -u [user] -a [apps] -k [k8s_distro] -v [k8s_version] -e [environment] -d [true/false] -r [true/false]
     Example 1 : sudo $0 -m deploy -u \$USER -d true          # install mifos-gazelle with debug mode and user \$USER
-    Example 2 : sudo $0 -m cleanapps -u \$USER -d true        # delete apps, leave environment with debug mode and user \$USER
-    Example 3 : sudo $0 -m cleanall -u \$USER                 # delete all apps, all Kubernetes artifacts, and server
-    Example 4 : sudo $0 -m deploy -u \$USER -a phee           # install PHEE only, user \$USER
-    Example 5 : sudo $0 -m deploy -u \$USER -a all            # install all core apps (vNext, PHEE, and MifosX) with user \$USER
+    Example 2 : sudo $0 -m cleanapps -u \$USER -d true       # delete apps, leave environment with debug mode and user \$USER
+    Example 3 : sudo $0 -m cleanall -u \$USER                # delete all apps, all Kubernetes artifacts, and server
+    Example 4 : sudo $0 -m deploy -u \$USER -a phee          # install PHEE only, user \$USER
+    Example 5 : sudo $0 -m deploy -u \$USER -a all           # install all core apps (vNext, PHEE, and MifosX) with user \$USER
     Example 6 : sudo $0 -m deploy -u \$USER -a \"mifosx,vnext\" # install MifosX and vNext
-    Example 7 : sudo $0 -f /opt/my_config.ini                 # Use a custom config file
+    Example 7 : sudo $0 -f /opt/my_config.ini                # Use a custom config file
 
     Options:
     -f config_file_path .. Specify an alternative config.ini file path (optional)
-    -m mode ................ deploy|cleanapps|cleanall  (required)
-    -u user ................ (non root) user that the process will use for execution (required)
-    -a apps ................ Comma-separated list of apps (vnext,phee,mifosx,infra) or 'all' (optional)
-    -d debug ............... enable debug mode (true|false) (optional default=false)
-    -r redeploy ............ force redeployment of apps (true|false) (optional, default=true)
-    -h|H ................... display this message
+    -m mode .............. deploy|cleanapps|cleanall (required)
+    -u user .............. (non root) user that the process will use for execution (required)
+    -a apps .............. Comma-separated list of apps (vnext,phee,mifosx,infra) or 'all' (optional)
+    -k k8s_distro ........ Kubernetes distribution for local clusters (k3s or microk8s, optional)
+    -v k8s_version ....... Kubernetes version for local clusters (e.g., 1.31, optional)
+    -e environment ....... Cluster environment (local or remote, optional, default=local)
+    -d debug ............. Enable debug mode (true|false, optional, default=false)
+    -r redeploy .......... Force redeployment of apps (true|false, optional, default=true)
+    -h|H ................. Display this message
     "
 }
 
 function validateInputs {
-        if [[ -z "$mode" || -z "$k8s_user" ]]; then
+    if [[ -z "$mode" || -z "$k8s_user" ]]; then
         echo "Error: Required options -m (mode) and -u (user) must be provided."
         showUsage
         exit 1
@@ -223,7 +228,6 @@ function validateInputs {
                 exit 1
             fi
             # If 'all' is present and valid, expand it to the full list of core apps
-            # This ensures that deployApps receives a list for 'all' as well.
             apps="$CORE_APPS"
             logWithLevel "$INFO" "Expanded 'all' keyword to: $apps"
         fi
@@ -241,13 +245,48 @@ function validateInputs {
         exit 1
     fi
 
+    if [[ -n "$environment" && "$environment" != "local" && "$environment" != "remote" ]]; then
+        echo "Error: Invalid environment '$environment'. Must be 'local' or 'remote'."
+        showUsage
+        exit 1
+    fi
+
+    if [[ "$environment" == "local" ]]; then
+        if [[ -n "$k8s_distro" && "$k8s_distro" != "k3s" && "$k8s_distro" != "microk8s" ]]; then
+            echo "Error: Invalid k8s_distro '$k8s_distro'. Must be 'k3s' or 'microk8s' for local environment."
+            showUsage
+            exit 1
+        fi
+        if [[ -z "$k8s_distro" ]]; then
+            echo "Error: k8s_distro must be specified for local environment."
+            showUsage
+            exit 1
+        fi
+        if [[ -z "$k8s_user_version" ]]; then
+            echo "Error: k8s_version must be specified for local environment."
+            showUsage
+            exit 1
+        fi
+    fi
+
+    if [[ "$environment" == "remote" && -n "$kubeconfig_path" && ! -f "$kubeconfig_path" ]]; then
+        echo "Error: kubeconfig_path '$kubeconfig_path' does not exist or is not a file."
+        showUsage
+        exit 1
+    fi
+
     # Set final defaults if they haven't been set by config or command line
-    # These are mostly for optional parameters not handled by loadConfigFromFile's direct assignment
     environment="${environment:-local}"
     debug="${debug:-false}"
     redeploy="${redeploy:-true}"
+    k8s_distro="${k8s_distro:-k3s}"
+    k8s_user_version="${k8s_user_version:-1.32}"
+    if [[ "$environment" == "remote" && -z "$kubeconfig_path" ]]; then
+        k8s_user_home=$(eval echo "~$k8s_user")
+        kubeconfig_path="$k8s_user_home/.kube/config"
+        logWithLevel "$INFO" "No kubeconfig_path specified in config.ini for remote environment. Defaulting to $kubeconfig_path"
+    fi
 }
-
 
 # Function to parse command-line options into an associative array
 function getOptions() {
@@ -255,16 +294,17 @@ function getOptions() {
     shift # Shift past the array name argument
 
     OPTIND=1 # Reset getopts index for fresh parsing
-    while getopts "m:k:d:a:v:u:r:f:hH" OPTION ; do
+    while getopts "m:k:d:a:v:u:r:f:e:hH" OPTION ; do
         case "${OPTION}" in
             f) options_map["config_file_path"]="${OPTARG}" ;;
             m) options_map["mode"]="${OPTARG}" ;;
             k) options_map["k8s_distro"]="${OPTARG}" ;;
             d) options_map["debug"]="${OPTARG}" ;;
-            a) options_map["apps"]="${OPTARG}" ;; 
+            a) options_map["apps"]="${OPTARG}" ;;
             v) options_map["k8s_user_version"]="${OPTARG}" ;;
             u) options_map["k8s_user"]="${OPTARG}" ;;
             r) options_map["redeploy"]="${OPTARG}" ;;
+            e) options_map["environment"]="${OPTARG}" ;;
             h|H) showUsage;
                  exit 0 ;;
             *) echo "Unknown option: -${OPTION}"
@@ -274,30 +314,22 @@ function getOptions() {
     done
 }
 
-
-# this function is called when Ctrl-C is sent
-function cleanUp ()
-{
-    # perform cleanup here
+# This function is called when Ctrl-C is sent
+function cleanUp() {
     echo -e "${RED}Performing graceful clean up${RESET}"
-
-    mode="cleanup"
-    echo "exiting via cleanUp function" 
-    #envSetupMain "$mode" "k3s" "1.32" "$environment"
-
-    # exit shell script with error code 2
-    # if omitted, shell script will continue execution
+    mode="cleanall"
+    echo "Exiting via cleanUp function"
+    envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment" "$kubeconfig_path"
     exit 2
 }
 
 function trapCtrlc {
-  echo
-  echo -e "${RED}Ctrl-C caught...${RESET}"
-  cleanUp
+    echo
+    echo -e "${RED}Ctrl-C caught...${RESET}"
+    cleanUp
 }
 
-# initialise trap to call trap_ctrlc function
-# when signal 2 (SIGINT) is received
+# Initialise trap to call trap_ctrlc function when signal 2 (SIGINT) is received
 trap "trapCtrlc" 2
 
 ###########################################################################
@@ -317,19 +349,14 @@ function main {
     fi
     logWithLevel "$INFO" "Using config file: $CONFIG_FILE_PATH"
 
-    # Load configuration from the file. This populates global vars (mode, k8s_user, apps, etc.)
-    # Note: Default values for environment, debug, redeploy, k8s_distro, k8s_user_version
-    # are already set at the top as global variables.
+    # Load configuration from the file
     loadConfigFromFile "$CONFIG_FILE_PATH"
 
-    # Now, merge command-line arguments, giving them precedence over config file values
-    # For each variable, if a command-line value exists, use it.
-    # Otherwise, the value from loadConfigFromFile (or initial global default) persists.
+    # Merge command-line arguments, giving them precedence over config file values
     if [[ -n "${cmd_args_map["mode"]}" ]]; then mode="${cmd_args_map["mode"]}"; fi
     if [[ -n "${cmd_args_map["k8s_user"]}" ]]; then k8s_user="${cmd_args_map["k8s_user"]}"; fi
     if [[ -n "${cmd_args_map["apps"]}" ]]; then
-        # If apps is provided via command line, convert comma-separated to space-separated
-        # This ensures consistency for validation and downstream functions.
+        # Convert comma-separated to space-separated
         apps=$(echo "${cmd_args_map["apps"]}" | tr ',' ' ')
         logWithLevel "$INFO" "CLI apps converted to space-separated: $apps"
     fi
@@ -337,7 +364,7 @@ function main {
     if [[ -n "${cmd_args_map["redeploy"]}" ]]; then redeploy="${cmd_args_map["redeploy"]}"; fi
     if [[ -n "${cmd_args_map["k8s_distro"]}" ]]; then k8s_distro="${cmd_args_map["k8s_distro"]}"; fi
     if [[ -n "${cmd_args_map["k8s_user_version"]}" ]]; then k8s_user_version="${cmd_args_map["k8s_user_version"]}"; fi
-
+    if [[ -n "${cmd_args_map["environment"]}" ]]; then environment="${cmd_args_map["environment"]}"; fi
 
     # Validate and set final defaults for all variables
     validateInputs
@@ -349,7 +376,7 @@ function main {
         echo -e "The deployment made by this script is currently recommended for demo, test and educational purposes "
         echo -e "======================================================================================================"
         echo -e "${RESET}"
-        envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment"
+        envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment" "$k8s_user" "$kubeconfig_path"
         deployApps "$mifosx_instances" "$apps" "$redeploy"
     elif [ "$mode" == "cleanapps" ]; then
         logWithVerboseCheck "$debug" "$INFO" "Cleaning up Mifos Gazelle applications only"
@@ -357,9 +384,10 @@ function main {
     elif [ "$mode" == "cleanall" ]; then
         logWithVerboseCheck "$debug" "$INFO" "Cleaning up all traces of Mifos Gazelle "
         deleteApps "$mifosx_instances" "all"
-        envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment"
+        envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment" "$k8s_user" "$kubeconfig_path"
     else
         showUsage
+        exit 1
     fi
 }
 
