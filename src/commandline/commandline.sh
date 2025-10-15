@@ -4,6 +4,14 @@ source "$RUN_DIR/src/configurationManager/config.sh"
 source "$RUN_DIR/src/environmentSetup/environmentSetup.sh"
 source "$RUN_DIR/src/deployer/deployer.sh"
 
+# Detect OS
+OS_TYPE="$(uname -s)"
+case "${OS_TYPE}" in
+    Linux*)     MACHINE=Linux;;
+    Darwin*)    MACHINE=Mac;;
+    *)          MACHINE="UNKNOWN:${OS_TYPE}"
+esac
+
 # INFO: New additions start from here
 DEFAULT_CONFIG_FILE="$RUN_DIR/config/config.ini"
 
@@ -26,14 +34,21 @@ resolve_invoker_user() {
 function install_crudini() {
     if ! command -v crudini &> /dev/null; then
         logWithLevel "$INFO" "crudini not found. Attempting to install..."
-        if command -v apt-get &> /dev/null; then
+        if [[ "$MACHINE" == "Mac" ]]; then
+            # On macOS, use pip to install crudini
+            if ! command -v pip3 &> /dev/null; then
+                logWithLevel "$ERROR" "pip3 not found. Please install Python 3 and pip3 first."
+                exit 1
+            fi
+            pip3 install crudini
+        elif command -v apt-get &> /dev/null; then
             sudo apt-get update && sudo apt-get install -y crudini
         elif command -v dnf &> /dev/null; then
             sudo dnf install -y crudini
         elif command -v yum &> /dev/null; then
             sudo yum install -y crudini
         else
-            logWithLevel "$ERROR" "Neither apt-get, dnf, nor yum found. Please install crudini manually."
+            logWithLevel "$ERROR" "Package manager not found. Please install crudini manually."
             exit 1
         fi
         if ! command -v crudini &> /dev/null; then
@@ -69,7 +84,7 @@ function loadConfigFromFile() {
     local config_mode=$(crudini --get "$config_path" general mode 2>/dev/null)
     if [[ -n "$config_mode" ]]; then mode="$config_mode"; fi
     local config_gazelle_domain=$(crudini --get "$config_path" general GAZELLE_DOMAIN 2>/dev/null)
-    if [[ -n "$config_gazelle_domain" ]]; then GAZELLE_DOMAIN="$config_gazelle_domain"; fi # GAZELLE_DOMAIN moved back here or to general for clarity
+    if [[ -n "$config_gazelle_domain" ]]; then GAZELLE_DOMAIN="$config_gazelle_domain"; fi
 
     # Read [environment] section
     local config_k8s_user=$(crudini --get "$config_path" environment user 2>/dev/null)
@@ -116,18 +131,6 @@ function loadConfigFromFile() {
             fi
         done
     done
-
-    # Log the effective config
-    # logWithLevel "$INFO" "Configuration loaded from $config_path:"
-    # logWithLevel "$INFO" "   mode: ${mode:-<not set>}"
-    # logWithLevel "$INFO" "   k8s_user: ${k8s_user:-<not set>}"
-    # logWithLevel "$INFO" "   apps: ${apps:-<not set>}"
-    # logWithLevel "$INFO" "   GAZELLE_DOMAIN: ${GAZELLE_DOMAIN:-<not set>}"
-    # logWithLevel "$INFO" "   MYSQL_SERVICE_NAME: ${MYSQL_SERVICE_NAME:-<not set>}"
-    # logWithLevel "$INFO" "   MYSQL_SERVICE_PORT: ${MYSQL_SERVICE_PORT:-<not set>}"
-    # logWithLevel "$INFO" "   LOCAL_PORT: ${LOCAL_PORT:-<not set>}"
-    # logWithLevel "$INFO" "   MAX_WAIT_SECONDS: ${MAX_WAIT_SECONDS:-<not set>}"
-    # logWithLevel "$INFO" "   MYSQL_HOST: ${MYSQL_HOST:-<not set>}"
 }
 
 # INFO: New additions are till here
@@ -191,17 +194,16 @@ function validateInputs {
 
         # Define valid individual applications
         local ALL_VALID_APPS="infra vnext phee mifosx all"
-        local CORE_APPS="vnext phee mifosx" # Apps that 'all' refers to
+        local CORE_APPS="vnext phee mifosx"
 
         # Iterate through each app specified in the 'apps' variable
         local current_apps_array
-        IFS=' ' read -r -a current_apps_array <<< "$apps" # Convert space-separated string to array
+        IFS=' ' read -r -a current_apps_array <<< "$apps"
 
         local found_all_keyword="false"
         local specific_apps_count=0
 
         for app_item in "${current_apps_array[@]}"; do
-            # Check if the individual app_item is valid
             if ! [[ " $ALL_VALID_APPS " =~ " $app_item " ]]; then
                 echo "Error: Invalid app specified: '$app_item'. Must be one of: ${ALL_VALID_APPS// /, }."
                 showUsage
@@ -222,8 +224,6 @@ function validateInputs {
                 showUsage
                 exit 1
             fi
-            # If 'all' is present and valid, expand it to the full list of core apps
-            # This ensures that deployApps receives a list for 'all' as well.
             apps="$CORE_APPS"
             logWithLevel "$INFO" "Expanded 'all' keyword to: $apps"
         fi
@@ -241,20 +241,17 @@ function validateInputs {
         exit 1
     fi
 
-    # Set final defaults if they haven't been set by config or command line
-    # These are mostly for optional parameters not handled by loadConfigFromFile's direct assignment
     environment="${environment:-local}"
     debug="${debug:-false}"
     redeploy="${redeploy:-true}"
 }
 
-
 # Function to parse command-line options into an associative array
 function getOptions() {
-    local -n options_map=$1 # Use nameref to pass array by reference (Bash 4.3+)
-    shift # Shift past the array name argument
+    local -n options_map=$1
+    shift
 
-    OPTIND=1 # Reset getopts index for fresh parsing
+    OPTIND=1
     while getopts "m:k:d:a:v:u:r:f:hH" OPTION ; do
         case "${OPTION}" in
             f) options_map["config_file_path"]="${OPTARG}" ;;
@@ -274,19 +271,12 @@ function getOptions() {
     done
 }
 
-
 # this function is called when Ctrl-C is sent
 function cleanUp ()
 {
-    # perform cleanup here
     echo -e "${RED}Performing graceful clean up${RESET}"
-
     mode="cleanup"
     echo "exiting via cleanUp function" 
-    #envSetupMain "$mode" "k3s" "1.32" "$environment"
-
-    # exit shell script with error code 2
-    # if omitted, shell script will continue execution
     exit 2
 }
 
@@ -297,7 +287,6 @@ function trapCtrlc {
 }
 
 # initialise trap to call trap_ctrlc function
-# when signal 2 (SIGINT) is received
 trap "trapCtrlc" 2
 
 ###########################################################################
@@ -311,25 +300,19 @@ function main {
     declare -A cmd_args_map
     getOptions cmd_args_map "$@"
 
-    # Determine the configuration file path: CLI override first, then default
+    # Determine the configuration file path
     if [[ -n "${cmd_args_map["config_file_path"]}" ]]; then
         CONFIG_FILE_PATH="${cmd_args_map["config_file_path"]}"
     fi
     logWithLevel "$INFO" "Using config file: $CONFIG_FILE_PATH"
 
-    # Load configuration from the file. This populates global vars (mode, k8s_user, apps, etc.)
-    # Note: Default values for environment, debug, redeploy, k8s_distro, k8s_user_version
-    # are already set at the top as global variables.
+    # Load configuration from the file
     loadConfigFromFile "$CONFIG_FILE_PATH"
 
-    # Now, merge command-line arguments, giving them precedence over config file values
-    # For each variable, if a command-line value exists, use it.
-    # Otherwise, the value from loadConfigFromFile (or initial global default) persists.
+    # Merge command-line arguments
     if [[ -n "${cmd_args_map["mode"]}" ]]; then mode="${cmd_args_map["mode"]}"; fi
     if [[ -n "${cmd_args_map["k8s_user"]}" ]]; then k8s_user="${cmd_args_map["k8s_user"]}"; fi
     if [[ -n "${cmd_args_map["apps"]}" ]]; then
-        # If apps is provided via command line, convert comma-separated to space-separated
-        # This ensures consistency for validation and downstream functions.
         apps=$(echo "${cmd_args_map["apps"]}" | tr ',' ' ')
         logWithLevel "$INFO" "CLI apps converted to space-separated: $apps"
     fi
@@ -338,11 +321,10 @@ function main {
     if [[ -n "${cmd_args_map["k8s_distro"]}" ]]; then k8s_distro="${cmd_args_map["k8s_distro"]}"; fi
     if [[ -n "${cmd_args_map["k8s_user_version"]}" ]]; then k8s_user_version="${cmd_args_map["k8s_user_version"]}"; fi
 
-
     # Validate and set final defaults for all variables
     validateInputs
 
-    # Main execution logic based on the final determined variables
+    # Main execution logic
     if [ "$mode" == "deploy" ]; then
         echo -e "${YELLOW}"
         echo -e "======================================================================================================"
