@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# Source required scripts
-#source "$RUN_DIR/src/configurationManager/config.sh"
-
 function check_arch_ok {
     local arch=$(uname -m)
     if [[ "$arch" != "x86_64" && "$arch" != "arm64" && "$arch" != "aarch64" ]]; then
@@ -618,6 +615,8 @@ function envSetupMain {
                 add_helm_repos
                 configure_k8s_user_env
                 $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
+                printf "\r==> kubernetes distro:[%s] version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
+               "$k8s_distro" "$K8S_VERSION" "$k8s_user"
             else 
                 checkHelmandKubectl
             fi
@@ -632,8 +631,7 @@ function envSetupMain {
             $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
         fi
         checkClusterConnection
-        printf "\r==> kubernetes distro:[%s] version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
-               "$k8s_distro" "$K8S_VERSION" "$k8s_user"
+
         print_end_message
     elif [[ "$mode" == "cleanall" ]]; then
         if [[ "$environment" == "local" ]]; then

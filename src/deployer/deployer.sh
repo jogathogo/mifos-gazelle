@@ -399,17 +399,40 @@ function preparePaymentHubChart(){
   cloneRepo "$PHBRANCH" "$PH_REPO_LINK" "$APPS_DIR" "$PHREPO_DIR"  # needed for kibana and elastic secrets only 
   cloneRepo "$PH_EE_ENV_TEMPLATE_REPO_BRANCH" "$PH_EE_ENV_TEMPLATE_REPO_LINK" "$APPS_DIR" "$PH_EE_ENV_TEMPLATE_REPO_DIR"
 
-  # Update helm dependencies and repo index for ph-ee-engine
-  echo "    updating dependencies ph-ee-engine chart "
-  phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
-  su - $k8s_user -c "cd $phEEenginePath;  helm dep update" >> /dev/null 2>&1 
-  su - $k8s_user -c "cd $phEEenginePath;  helm repo index ."
+  # Helper: choose dep build vs update
+  function ensureHelmDeps() {
+    local chartPath=$1
+    local chartName=$(basename "$chartPath")
 
-  # Update helm dependencies and repo index for gazelle i.e. parent chart of ph-ee-engine 
-  echo "    updating dependencies gazelle chart "
+    echo "    ensuring dependencies for $chartName chart"
+    if [[ -f "$chartPath/Chart.lock" && -s "$chartPath/Chart.lock" ]]; then
+      # Count entries in Chart.lock and compare with .tgz files in charts/
+      local expected=$(grep -c "name:" "$chartPath/Chart.lock")
+      local actual=$(find "$chartPath/charts" -maxdepth 1 -name '*.tgz' 2>/dev/null | wc -l)
+
+      if [[ $actual -ge $expected && $expected -gt 0 ]]; then
+        echo "      charts/ already populated ($actual/$expected) → running helm dep build"
+        su - $k8s_user -c "cd $chartPath && helm dep build" >> /dev/null 2>&1
+      else
+        echo "      charts/ not populated correctly ($actual/$expected) → running helm dep update"
+        su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
+      fi
+    else
+      echo "      no Chart.lock found → running helm dep update"
+      su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
+    fi
+
+    # Always regenerate repo index
+    su - $k8s_user -c "cd $chartPath && helm repo index ." >> /dev/null 2>&1
+  }
+
+  # Run for ph-ee-engine
+  phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
+  ensureHelmDeps "$phEEenginePath"
+
+  # Run for gazelle (parent)
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
-  su - $k8s_user -c "cd $gazelleChartPath ; helm dep update >> /dev/null 2>&1 " 
-  su - $k8s_user -c "cd $gazelleChartPath ; helm repo index ."
+  ensureHelmDeps "$gazelleChartPath"
 }
 
 function checkPHEEDependencies() {
@@ -490,7 +513,7 @@ function deployPH(){
   fi 
   echo "Deploying PaymentHub EE"
   createNamespace "$PH_NAMESPACE"
-  checkPHEEDependencies
+  #checkPHEEDependencies
   preparePaymentHubChart
   manageElasticSecrets create "$PH_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
   manageElasticSecrets create "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
