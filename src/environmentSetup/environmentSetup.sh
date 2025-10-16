@@ -77,21 +77,19 @@ function check_os_ok {
 function install_prerequisites {
     printf "\n\r==> Install any OS prerequisites, tools & updates  ...\n"
     if [[ $LINUX_OS == "Ubuntu" ]]; then
-        #printf "\rapt update \n"
-        #apt update > /dev/null 2>&1
         if [[ $k8s_distro == "microk8s" ]]; then
             printf "   install snapd\n"
             apt install snapd -y > /dev/null 2>&1
         fi
         if ! command -v docker &> /dev/null; then
             logWithVerboseCheck "$debug" debug "Docker is not installed. Installing Docker..."
-            sudo apt update >> /dev/null 2>&1
-            sudo apt install -y apt-transport-https ca-certificates curl software-properties-common >> /dev/null 2>&1
+            apt update >> /dev/null 2>&1
+            apt install -y apt-transport-https ca-certificates curl software-properties-common >> /dev/null 2>&1
             curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg >> /dev/null 2>&1
             echo "deb [signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list >> /dev/null 2>&1
-            sudo apt update >> /dev/null 2>&1
-            sudo apt install -y docker-ce docker-ce-cli containerd.io >> /dev/null 2>&1
-            sudo usermod -aG docker "$k8s_user"
+            apt update >> /dev/null 2>&1
+            apt install -y docker-ce docker-ce-cli containerd.io >> /dev/null 2>&1
+            usermod -aG docker "$k8s_user"
             printf "ok \n"
         else
             logWithVerboseCheck "$debug" debug "Docker is already installed.\n"
@@ -106,8 +104,8 @@ function install_prerequisites {
         fi
         if ! command -v jq &> /dev/null; then
             logWithVerboseCheck "$debug" debug "jq is not installed. Installing ..."
-            sudo apt-get update >> /dev/null 2>&1
-            sudo apt-get -y install jq >> /dev/null 2>&1
+            apt-get update >> /dev/null 2>&1
+            apt-get -y install jq >> /dev/null 2>&1
             printf "ok\n"
         else
             logWithVerboseCheck "$debug" debug "jq is already installed\n"
@@ -210,6 +208,7 @@ function verify_user {
     k8s_user_home=`eval echo "~$k8s_user"`
 }
 
+# MicroK8s is not currently supported but keeping functions around in cse we nee
 function do_microk8s_install {
     printf "==> Installing Kubernetes MicroK8s & enabling tools (helm, ingress, etc) \n"
     echo "==> Microk8s Install: installing microk8s release $k8s_user_version ... "
@@ -504,7 +503,7 @@ function install_k8s_tools {
 
     for tool in "${!tools[@]}"; do
         if command -v "$tool" >/dev/null 2>&1; then
-            echo "$tool is already installed, skipping installation"
+            continue
         else
             if [[ "$tool" == "kustomize" ]]; then
                 curl -s "${tools[$tool]}" | bash > /dev/null 2>&1
@@ -556,28 +555,105 @@ function configure_k8s_user_env {
     fi
 }
 
-function envSetupMain {
-    DEFAULT_K8S_DISTRO="k3s"
-    K8S_VERSION=""
-    HELM_VERSION="3.18.4"
-    OS_VERSIONS_LIST=( 22 24 )
-    K8S_CURRENT_RELEASE_LIST=( "1.31" "1.32" ) 
-    CURRENT_RELEASE="false"
-    k8s_user_home=""
-    k8s_arch=`uname -p`
-    MIN_RAM=6
-    MIN_FREE_SPACE=30
-    LINUX_OS_LIST=( "Ubuntu" )
-    UBUNTU_OK_VERSIONS_LIST=( 22 24 )
+# function envSetupMain {
+#     DEFAULT_K8S_DISTRO="k3s"
+#     K8S_VERSION=""
+#     HELM_VERSION="3.18.4"
+#     OS_VERSIONS_LIST=( 22 24 )
+#     K8S_CURRENT_RELEASE_LIST=( "1.31" "1.32" ) 
+#     CURRENT_RELEASE="false"
+#     k8s_user_home=""
+#     k8s_arch=`uname -p`
+#     MIN_RAM=6
+#     MIN_FREE_SPACE=30
+#     LINUX_OS_LIST=( "Ubuntu" )
+#     UBUNTU_OK_VERSIONS_LIST=( 22 24 )
 
+#     if [ "$EUID" -ne 0 ]; then
+#         echo "Please run as root"
+#         exit 1
+#     fi
+
+#     if [ $# -lt 6 ]; then
+#         showUsage
+#         echo "Not enough arguments -m mode, -k k8s_distro, -v k8s_version, -e environment, -u k8s_user, and kubeconfig_path must be specified"
+#         exit 1
+#     fi
+
+#     mode="$1"
+#     k8s_distro="$2"
+#     k8s_user_version="$3"
+#     environment="$4"
+#     k8s_user="$5"
+#     kubeconfig_path="$6"
+
+#     if [[ -z "$kubeconfig_path" ]]; then
+#         k8s_user_home=`eval echo "~$k8s_user"`
+#         kubeconfig_path="$k8s_user_home/.kube/config"
+#         logWithVerboseCheck "$debug" info "No kubeconfig_path provided, defaulting to $kubeconfig_path"
+#     fi
+
+#     logWithVerboseCheck "$debug" info "Starting envSetupMain with mode=$mode, k8s_distro=$k8s_distro, k8s_version=$k8s_user_version, environment=$environment, k8s_user=$k8s_user, kubeconfig_path=$kubeconfig_path"
+
+#     check_arch_ok
+#     verify_user
+#     set_user
+
+#     if [[ "$mode" == "deploy" ]]; then
+#         check_resources_ok
+#         set_k8s_distro
+#         if [[ "$environment" == "local" ]]; then
+#             set_k8s_version
+#             if ! k8s_already_installed; then 
+#                 check_os_ok
+#                 install_prerequisites
+#                 add_hosts
+#                 setup_k8s_cluster "$environment"
+#                 install_nginx "$environment" "$k8s_distro"
+#                 install_k8s_tools
+#                 add_helm_repos
+#                 configure_k8s_user_env
+#                 $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
+#                 printf "\r==> kubernetes distro:[%s] version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
+#                "$k8s_distro" "$K8S_VERSION" "$k8s_user"
+#             else 
+#                 checkHelmandKubectl
+#             fi
+#         else # remote cluster 
+#             check_os_ok
+#             install_prerequisites
+#             setup_k8s_cluster "$environment"
+#             #install_nginx "$environment" "$k8s_distro"
+#             install_k8s_tools
+#             add_helm_repos
+#             configure_k8s_user_env
+#             $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
+#         fi
+#         checkClusterConnection
+
+#         print_end_message
+#     elif [[ "$mode" == "cleanall" ]]; then
+#         if [[ "$environment" == "local" ]]; then
+#             echo "Deleting local kubernetes cluster..."
+#             delete_k8s
+#             echo "Local Kubernetes deleted" 
+#         fi
+#         print_end_message_tear_down
+#     else
+#         showUsage
+#         exit 1
+#     fi
+# }
+
+function envSetupMain {
     if [ "$EUID" -ne 0 ]; then
         echo "Please run as root"
         exit 1
     fi
 
-    if [ $# -lt 6 ]; then
+    if [ $# -lt 12 ]; then
         showUsage
-        echo "Not enough arguments -m mode, -k k8s_distro, -v k8s_version, -e environment, -u k8s_user, and kubeconfig_path must be specified"
+        echo "Not enough arguments -m mode, -k k8s_distro, -v k8s_version, -e environment, -u k8s_user, kubeconfig_path, default_k8s_distro, helm_version, k8s_current_release_list, min_ram, min_free_space, linux_os_list, and ubuntu_ok_versions_list must be specified"
         exit 1
     fi
 
@@ -587,6 +663,23 @@ function envSetupMain {
     environment="$4"
     k8s_user="$5"
     kubeconfig_path="$6"
+    DEFAULT_K8S_DISTRO="$7"
+    HELM_VERSION="$8"
+    K8S_CURRENT_RELEASE_LIST="$9"
+    MIN_RAM="${10}"
+    MIN_FREE_SPACE="${11}"
+    LINUX_OS_LIST="${12}"
+    UBUNTU_OK_VERSIONS_LIST="${13}"
+
+    # Convert space-separated lists to arrays
+    IFS=' ' read -r -a K8S_CURRENT_RELEASE_LIST <<< "$K8S_CURRENT_RELEASE_LIST"
+    IFS=' ' read -r -a LINUX_OS_LIST <<< "$LINUX_OS_LIST"
+    IFS=' ' read -r -a UBUNTU_OK_VERSIONS_LIST <<< "$UBUNTU_OK_VERSIONS_LIST"
+
+    K8S_VERSION=""
+    CURRENT_RELEASE="false"
+    k8s_user_home=""
+    k8s_arch=`uname -p`
 
     if [[ -z "$kubeconfig_path" ]]; then
         k8s_user_home=`eval echo "~$k8s_user"`
@@ -594,7 +687,7 @@ function envSetupMain {
         logWithVerboseCheck "$debug" info "No kubeconfig_path provided, defaulting to $kubeconfig_path"
     fi
 
-    logWithVerboseCheck "$debug" info "Starting envSetupMain with mode=$mode, k8s_distro=$k8s_distro, k8s_version=$k8s_user_version, environment=$environment, k8s_user=$k8s_user, kubeconfig_path=$kubeconfig_path"
+    logWithVerboseCheck "$debug" info "Starting envSetupMain with mode=$mode, k8s_distro=$k8s_distro, k8s_version=$k8s_user_version, environment=$environment, k8s_user=$k8s_user, kubeconfig_path=$kubeconfig_path, default_k8s_distro=$DEFAULT_K8S_DISTRO, helm_version=$HELM_VERSION, k8s_current_release_list=${K8S_CURRENT_RELEASE_LIST[*]}, min_ram=$MIN_RAM, min_free_space=$MIN_FREE_SPACE, linux_os_list=${LINUX_OS_LIST[*]}, ubuntu_ok_versions_list=${UBUNTU_OK_VERSIONS_LIST[*]}"
 
     check_arch_ok
     verify_user
@@ -615,12 +708,10 @@ function envSetupMain {
                 add_helm_repos
                 configure_k8s_user_env
                 $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
-                printf "\r==> kubernetes distro:[%s] version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
-               "$k8s_distro" "$K8S_VERSION" "$k8s_user"
             else 
                 checkHelmandKubectl
             fi
-        else # remote cluster 
+        else
             check_os_ok
             install_prerequisites
             setup_k8s_cluster "$environment"
@@ -628,10 +719,11 @@ function envSetupMain {
             install_k8s_tools
             add_helm_repos
             configure_k8s_user_env
-            $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
+            #$UTILS_DIR/install-k9s.sh > /dev/null 2>&1
         fi
         checkClusterConnection
-
+        printf "\r==> kubernetes distro:[%s] version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
+               "$k8s_distro" "$K8S_VERSION" "$k8s_user"
         print_end_message
     elif [[ "$mode" == "cleanall" ]]; then
         if [[ "$environment" == "local" ]]; then

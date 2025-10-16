@@ -279,25 +279,26 @@ function deleteResourcesInNamespaceMatchingPattern() {
         namespace=$(echo "$namespace" | cut -d'/' -f2)
         echo "DEBUG Processing namespace: $namespace"
         if [[ $namespace == "default" ]]; then
-            local deployment_name="prometheus-operator"
-            local deployment_available
-            deployment_available=$(su - "$k8s_user" -c "kubectl get deployment \"$deployment_name\" -n default -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" 2>/tmp/kubectl_error.log || true)
-            if [ -s /tmp/kubectl_error.log ]; then
-                echo "Error checking deployment '$deployment_name' in namespace 'default': $(cat /tmp/kubectl_error.log)"
-            fi
-            echo "DEBUG Deployment '$deployment_name' availability: $deployment_available"
-            if [[ "$deployment_available" == "True" ]]; then
-                printf "Deleting Prometheus Operator resources in default namespace"
-                LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
-                su - "$k8s_user" -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl delete -f - -n default" >/tmp/kubectl_delete.log 2>&1
-                if [ $? -eq 0 ]; then
-                    echo " [ok] "
-                else
-                    echo "Warning: there was an issue uninstalling Prometheus Operator resources in default namespace."
-                    echo "         you can ignore this if Prometheus was not expected to be already running."
-                    echo "         Error details: $(cat /tmp/kubectl_delete.log)"
-                fi
-            fi
+            echo "TODO : remove promethueus install and or move it to infra OR phee namespace"
+            # local deployment_name="prometheus-operator"
+            # local deployment_available
+            # deployment_available=$(su - "$k8s_user" -c "kubectl get deployment \"$deployment_name\" -n default -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" 2>/tmp/kubectl_error.log || true)
+            # if [ -s /tmp/kubectl_error.log ]; then
+            #     echo "Error checking deployment '$deployment_name' in namespace 'default': $(cat /tmp/kubectl_error.log)"
+            # fi
+            # echo "DEBUG Deployment '$deployment_name' availability: $deployment_available"
+            # if [[ "$deployment_available" == "True" ]]; then
+            #     printf "Deleting Prometheus Operator resources in default namespace"
+            #     LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
+            #     su - "$k8s_user" -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl delete -f - -n default" >/tmp/kubectl_delete.log 2>&1
+            #     if [ $? -eq 0 ]; then
+            #         echo " [ok] "
+            #     else
+            #         echo "Warning: there was an issue uninstalling Prometheus Operator resources in default namespace."
+            #         echo "         you can ignore this if Prometheus was not expected to be already running."
+            #         echo "         Error details: $(cat /tmp/kubectl_delete.log)"
+            #     fi
+            # fi
         else
             printf "Deleting all resources in namespace $namespace "
             su - "$k8s_user" -c "kubectl delete all --all -n \"$namespace\"" >/tmp/kubectl_delete.log 2>&1
@@ -311,57 +312,6 @@ function deleteResourcesInNamespaceMatchingPattern() {
         fi
     done
 }
-
-# function deleteResourcesInNamespaceMatchingPattern() {
-#     local pattern="$1"  
-#     # Check if the pattern is provided
-#     if [ -z "$pattern" ]; then
-#         echo "Pattern not provided."
-#         return 1
-#     fi
-    
-#     # Get namespaces matching the pattern
-#     echo "DEBUG Fetching namespaces "
-#     su - "$k8s_user" -c "kubectl get namespaces"
-#     echo "DEBUG Fetching namespaces "
-
-#     local namespaces
-#     namespaces=$(sudo -u "$k8s_user" kubectl get namespaces -o name | grep "$pattern" || true)
-#     echo "DEBUG Namespaces matching pattern '$pattern': $namespaces"
-#     if [ -z "$namespaces" ]; then
-#         echo "No namespaces found matching pattern: $pattern"
-#         return 0
-#     fi
-    
-#     echo "$namespaces" | while read -r namespace; do
-#         namespace=$(echo "$namespace" | cut -d'/' -f2)
-#         echo "DEBUG Processing namespace: $namespace"
-#         if [[ $namespace == "default" ]]; then
-#           local deployment_name="prometheus-operator"
-#           deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null)
-#           if [[ "$deployment_available" == "True" ]]; then
-#             printf  "Deleting Prometheus Operator resources in default namespace"
-#             LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
-#             su - "$k8s_user" -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl -n default delete -f -" >/dev/null 2>&1
-#             if [ $? -eq 0 ]; then
-#                 echo " [ok] "
-#             else
-#                 echo "Warning: there was an issue uninstalling  Prometheus Operator resources in default namespace."
-#                 echo "         you can ignore this if Prometheus was not expected to be already running."
-#             fi
-#           fi
-#         else
-#             printf "Deleting all resources in namespace $namespace "
-#             kubectl delete all --all -n "$namespace" >> /dev/null 2>&1
-#             kubectl delete ns "$namespace" >> /dev/null 2>&1
-#             if [ $? -eq 0 ]; then
-#                 echo " [ok] "
-#             else
-#                 echo "Error deleting resources in namespace $namespace."
-#             fi
-#         fi
-#     done
-# }
 
 function deployHelmChartFromDir() {
   # Check if the chart directory exists
@@ -435,25 +385,26 @@ function preparePaymentHubChart(){
   ensureHelmDeps "$gazelleChartPath"
 }
 
-function checkPHEEDependencies() {
-  printf "    Installing Prometheus " 
-  # Install Prometheus Operator if needed as it is a PHEE dependency
-  local deployment_name="prometheus-operator"
-  # deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' > /dev/null 2>&1)
-  deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null)
-  if [[ "$deployment_available" == "True" ]]; then
-    echo -e "${RED} prometheus already installed -skipping install. ${RESET}" 
-    return 0
-  fi
-  LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
-  su - $k8s_user -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl create -f - " >/dev/null 2>&1
-  if [ $? -eq 0 ]; then
-      echo " [ok] "
-  else
-      echo "   Failed to install prometheus"
-      exit 1 
-  fi
-}
+# function checkPHEEDependencies() {
+#   # for Gazelle we might not need this 
+#   printf "    Installing Prometheus " 
+#   # Install Prometheus Operator if needed as it is a PHEE dependency
+#   local deployment_name="prometheus-operator"
+#   # deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' > /dev/null 2>&1)
+#   deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null)
+#   if [[ "$deployment_available" == "True" ]]; then
+#     echo -e "${RED} prometheus already installed -skipping install. ${RESET}" 
+#     return 0
+#   fi
+#   LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
+#   su - $k8s_user -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl create -f - " >/dev/null 2>&1
+#   if [ $? -eq 0 ]; then
+#       echo " [ok] "
+#   else
+#       echo "   Failed to install prometheus"
+#       exit 1 
+#   fi
+# }
 
 function deployPhHelmChartFromDir(){
   # Parameters
@@ -505,7 +456,7 @@ function deployPH(){
       return
     else # need to delete prior to redeploy 
       deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-      deleteResourcesInNamespaceMatchingPattern "default"  #just removes prometheus at the moment
+      #deleteResourcesInNamespaceMatchingPattern "default"  #just removes prometheus at the moment and so is probably not needed
       manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
       rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
       rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
@@ -841,15 +792,15 @@ function deleteApps {
           ;;
         "phee")
           deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-          rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz
-          rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz
-          echo "Handling Prometheus Operator resources in the default namespace as part of PHEE cleanup"
-          LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
-          su - "$k8s_user" -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl -n default delete -f -" > /dev/null 2>&1
-          if [ $? -ne 0 ]; then
-            echo "Warning: there was an issue uninstalling  Prometheus Operator resources in default namespace."
-            echo "         You can ignore this if Prometheus was not expected to be already running."
-          fi
+          # rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz
+          # rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz
+          # echo "Handling Prometheus Operator resources in the default namespace as part of PHEE cleanup"
+          # LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
+          # su - "$k8s_user" -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl -n default delete -f -" > /dev/null 2>&1
+          # if [ $? -ne 0 ]; then
+          #   echo "Warning: there was an issue uninstalling  Prometheus Operator resources in default namespace."
+          #   echo "         You can ignore this if Prometheus was not expected to be already running."
+          # fi
           ;;
         "infra")
           deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"

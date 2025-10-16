@@ -44,20 +44,26 @@ function install_crudini() {
     fi
 }
 
-# Global variables that will hold the final configuration.
+# Global variables that will hold the final configuration
 mode=""
 k8s_user=""
 apps=""
 environment="local"
 debug="false"
 redeploy="true"
-k8s_distro="k3s"
-k8s_user_version="1.32"
+k8s_distro=""
+k8s_user_version=""
 kubeconfig_path=""
+default_k8s_distro="k3s"
+helm_version="3.18.4"
+k8s_current_release_list="1.31 1.32"
+min_ram=6
+min_free_space=30
+linux_os_list="Ubuntu"
+ubuntu_ok_versions_list="22 24"
 CONFIG_FILE_PATH="$DEFAULT_CONFIG_FILE"
 
 # Function to load configuration from the INI file using crudini
-# This function populates the global configuration variables directly.
 function loadConfigFromFile() {
     local config_path="$1"
     logWithLevel "$INFO" "Attempting to load configuration from $config_path using crudini."
@@ -72,6 +78,8 @@ function loadConfigFromFile() {
     if [[ -n "$config_mode" ]]; then mode="$config_mode"; fi
     local config_gazelle_domain=$(crudini --get "$config_path" general GAZELLE_DOMAIN 2>/dev/null)
     if [[ -n "$config_gazelle_domain" ]]; then GAZELLE_DOMAIN="$config_gazelle_domain"; fi
+    local config_gazelle_version=$(crudini --get "$config_path" general GAZELLE_VERSION 2>/dev/null)
+    if [[ -n "$config_gazelle_version" ]]; then GAZELLE_VERSION="$config_gazelle_version"; fi
 
     # Read [kubernetes] section
     local config_environment=$(crudini --get "$config_path" kubernetes environment 2>/dev/null)
@@ -90,16 +98,30 @@ function loadConfigFromFile() {
         fi
     fi
     local config_kubeconfig_path=$(crudini --get "$config_path" kubernetes kubeconfig_path 2>/dev/null)
-    echo "Config kubeconfig_path from file: $config_kubeconfig_path"
     if [[ -n "$config_kubeconfig_path" ]]; then
         if [[ "$config_kubeconfig_path" == "~/.kube/config" ]]; then
             k8s_user_home=$(eval echo "~$k8s_user")
             kubeconfig_path="$k8s_user_home/.kube/config"
+            logWithLevel "$INFO" "Expanded kubeconfig_path to: $kubeconfig_path"
         else
             kubeconfig_path="$config_kubeconfig_path"
         fi
     fi
-    echo "DEBUG Config kubeconfig_path from file: $config_kubeconfig_path"
+    local config_default_k8s_distro=$(crudini --get "$config_path" kubernetes default_k8s_distro 2>/dev/null)
+    if [[ -n "$config_default_k8s_distro" ]]; then default_k8s_distro="$config_default_k8s_distro"; fi
+    local config_helm_version=$(crudini --get "$config_path" kubernetes helm_version 2>/dev/null)
+    if [[ -n "$config_helm_version" ]]; then helm_version="$config_helm_version"; fi
+    local config_k8s_current_release_list=$(crudini --get "$config_path" kubernetes k8s_current_release_list 2>/dev/null)
+    if [[ -n "$config_k8s_current_release_list" ]]; then k8s_current_release_list="$config_k8s_current_release_list"; fi
+    local config_min_ram=$(crudini --get "$config_path" kubernetes min_ram 2>/dev/null)
+    if [[ -n "$config_min_ram" ]]; then min_ram="$config_min_ram"; fi
+    local config_min_free_space=$(crudini --get "$config_path" kubernetes min_free_space 2>/dev/null)
+    if [[ -n "$config_min_free_space" ]]; then min_free_space="$config_min_free_space"; fi
+    local config_linux_os_list=$(crudini --get "$config_path" kubernetes linux_os_list 2>/dev/null)
+    if [[ -n "$config_linux_os_list" ]]; then linux_os_list="$config_linux_os_list"; fi
+    local config_ubuntu_ok_versions_list=$(crudini --get "$config_path" kubernetes ubuntu_ok_versions_list 2>/dev/null)
+    if [[ -n "$config_ubuntu_ok_versions_list" ]]; then ubuntu_ok_versions_list="$config_ubuntu_ok_versions_list"; fi
+
     # Read app enablement flags and construct the 'apps' variable
     local enabled_apps_list=""
     local valid_apps=("infra" "vnext" "phee" "mifosx")
@@ -122,6 +144,7 @@ function loadConfigFromFile() {
         [vnext]="VNEXTBRANCH VNEXTREPO_DIR VNEXT_NAMESPACE VNEXT_REPO_LINK"
         [phee]="PHBRANCH PHREPO_DIR PH_NAMESPACE PH_RELEASE_NAME PH_REPO_LINK PH_EE_ENV_TEMPLATE_REPO_LINK PH_EE_ENV_TEMPLATE_REPO_BRANCH PH_EE_ENV_TEMPLATE_REPO_DIR"
         [mifosx]="MIFOSX_NAMESPACE MIFOSX_REPO_DIR MIFOSX_BRANCH MIFOSX_REPO_LINK"
+        [kubernetes]="default_k8s_distro helm_version k8s_current_release_list min_ram min_free_space linux_os_list ubuntu_ok_versions_list"
     )
 
     for section in "${!override_map[@]}"; do
@@ -194,25 +217,21 @@ function validateInputs {
             apps="all"
         fi
 
-        # Define valid individual applications
         local ALL_VALID_APPS="infra vnext phee mifosx all"
-        local CORE_APPS="vnext phee mifosx" # Apps that 'all' refers to
+        local CORE_APPS="vnext phee mifosx"
 
-        # Iterate through each app specified in the 'apps' variable
         local current_apps_array
-        IFS=' ' read -r -a current_apps_array <<< "$apps" # Convert space-separated string to array
+        IFS=' ' read -r -a current_apps_array <<< "$apps"
 
         local found_all_keyword="false"
         local specific_apps_count=0
 
         for app_item in "${current_apps_array[@]}"; do
-            # Check if the individual app_item is valid
             if ! [[ " $ALL_VALID_APPS " =~ " $app_item " ]]; then
                 echo "Error: Invalid app specified: '$app_item'. Must be one of: ${ALL_VALID_APPS// /, }."
                 showUsage
                 exit 1
             fi
-
             if [[ "$app_item" == "all" ]]; then
                 found_all_keyword="true"
             else
@@ -220,14 +239,12 @@ function validateInputs {
             fi
         done
 
-        # Handle 'all' keyword conflicts
         if [[ "$found_all_keyword" == "true" ]]; then
             if [[ "$specific_apps_count" -gt 0 ]]; then
                 echo "Error: Cannot combine 'all' with specific applications. If 'all' is specified, no other apps should be listed."
                 showUsage
                 exit 1
             fi
-            # If 'all' is present and valid, expand it to the full list of core apps
             apps="$CORE_APPS"
             logWithLevel "$INFO" "Expanded 'all' keyword to: $apps"
         fi
@@ -258,28 +275,60 @@ function validateInputs {
             exit 1
         fi
         if [[ -z "$k8s_distro" ]]; then
-            echo "Error: k8s_distro must be specified for local environment."
-            showUsage
-            exit 1
+            k8s_distro="$default_k8s_distro"
+            logWithLevel "$INFO" "No k8s_distro specified, using default: $k8s_distro"
         fi
         if [[ -z "$k8s_user_version" ]]; then
             echo "Error: k8s_version must be specified for local environment."
             showUsage
             exit 1
         fi
+        local k8s_version_valid="false"
+        for version in $k8s_current_release_list; do
+            if [[ "$k8s_user_version" == "$version" ]]; then
+                k8s_version_valid="true"
+                break
+            fi
+        done
+        if [[ "$k8s_version_valid" != "true" ]]; then
+            echo "Error: Invalid k8s_version '$k8s_user_version'. Must be one of: $k8s_current_release_list."
+            showUsage
+            exit 1
+        fi
     fi
 
-    if [[ "$environment" == "remote" && -n "$kubeconfig_path" && ! -f "$kubeconfig_path" ]]; then
-        echo "Error: kubeconfig_path '$kubeconfig_path' does not exist or is not a file."
+    if [[ "$environment" == "remote" && -n "$kubeconfig_path" ]]; then
+        if [[ ! -f "$kubeconfig_path" ]]; then
+            echo "Error: kubeconfig_path '$kubeconfig_path' does not exist or is not a file."
+            showUsage
+            exit 1
+        fi
+        # Verify kubeconfig connectivity
+        #`su - "$k8s_user" -c "kubectl get nodes"
+        KUBECONFIG="$kubeconfig_path" su - "$k8s_user" -c "kubectl version" >/dev/null 2>&1
+        if [[ $? -ne 0 ]]; then
+            echo "Error: Cannot connect to the Kubernetes cluster using kubeconfig at '$kubeconfig_path'. Please verify the file and cluster accessibility."
+            exit 1
+        fi
+    fi
+
+    if [[ ! " $linux_os_list " =~ " Ubuntu " ]]; then
+        echo "Error: Only Ubuntu is supported in linux_os_list: $linux_os_list."
         showUsage
         exit 1
     fi
 
-    # Set final defaults if they haven't been set by config or command line
+    local os_version=$(lsb_release -r -s | cut -d'.' -f1)
+    if [[ ! " $ubuntu_ok_versions_list " =~ " $os_version " ]]; then
+        echo "Error: Ubuntu version '$os_version' is not supported. Supported versions: $ubuntu_ok_versions_list."
+        showUsage
+        exit 1
+    fi
+
     environment="${environment:-local}"
     debug="${debug:-false}"
     redeploy="${redeploy:-true}"
-    k8s_distro="${k8s_distro:-k3s}"
+    k8s_distro="${k8s_distro:-$default_k8s_distro}"
     k8s_user_version="${k8s_user_version:-1.32}"
     if [[ "$environment" == "remote" && -z "$kubeconfig_path" ]]; then
         k8s_user_home=$(eval echo "~$k8s_user")
@@ -288,12 +337,11 @@ function validateInputs {
     fi
 }
 
-# Function to parse command-line options into an associative array
 function getOptions() {
-    local -n options_map=$1 # Use nameref to pass array by reference (Bash 4.3+)
-    shift # Shift past the array name argument
+    local -n options_map=$1
+    shift
 
-    OPTIND=1 # Reset getopts index for fresh parsing
+    OPTIND=1
     while getopts "m:k:d:a:v:u:r:f:e:hH" OPTION ; do
         case "${OPTION}" in
             f) options_map["config_file_path"]="${OPTARG}" ;;
@@ -314,12 +362,13 @@ function getOptions() {
     done
 }
 
-# This function is called when Ctrl-C is sent
 function cleanUp() {
     echo -e "${RED}Performing graceful clean up${RESET}"
     mode="cleanall"
     echo "Exiting via cleanUp function"
-    envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment" "$kubeconfig_path"
+    envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment" "$k8s_user" "$kubeconfig_path" \
+                 "$default_k8s_distro" "$helm_version" "$k8s_current_release_list" "$min_ram" "$min_free_space" \
+                 "$linux_os_list" "$ubuntu_ok_versions_list"
     exit 2
 }
 
@@ -329,34 +378,25 @@ function trapCtrlc {
     cleanUp
 }
 
-# Initialise trap to call trap_ctrlc function when signal 2 (SIGINT) is received
 trap "trapCtrlc" 2
 
-###########################################################################
-# MAIN
-###########################################################################
 function main {
     welcome
     install_crudini
 
-    # Declare an associative array to store command-line arguments
     declare -A cmd_args_map
     getOptions cmd_args_map "$@"
 
-    # Determine the configuration file path: CLI override first, then default
     if [[ -n "${cmd_args_map["config_file_path"]}" ]]; then
         CONFIG_FILE_PATH="${cmd_args_map["config_file_path"]}"
     fi
     logWithLevel "$INFO" "Using config file: $CONFIG_FILE_PATH"
 
-    # Load configuration from the file
     loadConfigFromFile "$CONFIG_FILE_PATH"
 
-    # Merge command-line arguments, giving them precedence over config file values
     if [[ -n "${cmd_args_map["mode"]}" ]]; then mode="${cmd_args_map["mode"]}"; fi
     if [[ -n "${cmd_args_map["k8s_user"]}" ]]; then k8s_user="${cmd_args_map["k8s_user"]}"; fi
     if [[ -n "${cmd_args_map["apps"]}" ]]; then
-        # Convert comma-separated to space-separated
         apps=$(echo "${cmd_args_map["apps"]}" | tr ',' ' ')
         logWithLevel "$INFO" "CLI apps converted to space-separated: $apps"
     fi
@@ -366,17 +406,17 @@ function main {
     if [[ -n "${cmd_args_map["k8s_user_version"]}" ]]; then k8s_user_version="${cmd_args_map["k8s_user_version"]}"; fi
     if [[ -n "${cmd_args_map["environment"]}" ]]; then environment="${cmd_args_map["environment"]}"; fi
 
-    # Validate and set final defaults for all variables
     validateInputs
 
-    # Main execution logic based on the final determined variables
     if [ "$mode" == "deploy" ]; then
         echo -e "${YELLOW}"
         echo -e "======================================================================================================"
         echo -e "The deployment made by this script is currently recommended for demo, test and educational purposes "
         echo -e "======================================================================================================"
         echo -e "${RESET}"
-        envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment" "$k8s_user" "$kubeconfig_path"
+        envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment" "$k8s_user" "$kubeconfig_path" \
+                     "$default_k8s_distro" "$helm_version" "$k8s_current_release_list" "$min_ram" "$min_free_space" \
+                     "$linux_os_list" "$ubuntu_ok_versions_list"
         deployApps "$mifosx_instances" "$apps" "$redeploy"
     elif [ "$mode" == "cleanapps" ]; then
         logWithVerboseCheck "$debug" "$INFO" "Cleaning up Mifos Gazelle applications only"
@@ -384,14 +424,13 @@ function main {
     elif [ "$mode" == "cleanall" ]; then
         logWithVerboseCheck "$debug" "$INFO" "Cleaning up all traces of Mifos Gazelle "
         deleteApps "$mifosx_instances" "all"
-        envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment" "$k8s_user" "$kubeconfig_path"
+        envSetupMain "$mode" "$k8s_distro" "$k8s_user_version" "$environment" "$k8s_user" "$kubeconfig_path" \
+                     "$default_k8s_distro" "$helm_version" "$k8s_current_release_list" "$min_ram" "$min_free_space" \
+                     "$linux_os_list" "$ubuntu_ok_versions_list"
     else
         showUsage
         exit 1
     fi
 }
 
-###########################################################################
-# CALL TO MAIN
-###########################################################################
 main "$@"
