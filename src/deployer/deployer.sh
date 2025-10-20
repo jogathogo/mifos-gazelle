@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # deployer.sh -- the main Mifos Gazelle deployer script
 
+source "$RUN_DIR/src/utils/logger.sh"
+source "$RUN_DIR/src/utils/helpers.sh" 
 source "$RUN_DIR/src/deployer/core.sh"
 source "$RUN_DIR/src/deployer/vnext.sh"
 source "$RUN_DIR/src/deployer/mifosx.sh"

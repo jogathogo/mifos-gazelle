@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source "$RUN_DIR/src/utils/logger.sh"
+source "$RUN_DIR/src/utils/helpers.sh"
 source "$RUN_DIR/src/configurationManager/config.sh"
 source "$RUN_DIR/src/environmentSetup/environmentSetup.sh"
 source "$RUN_DIR/src/deployer/deployer.sh"
@@ -431,4 +433,4 @@ function main {
     fi
 }
 
-main "$@"
+#main "$@"

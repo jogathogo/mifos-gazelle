@@ -1,35 +1,34 @@
 #!/usr/bin/env bash
 # deployer.sh -- the main Mifos Gazelle deployer script
 
-# Function to check and handle command execution errors
-check_command_execution() {
-  local msg=$1
-  if [ $? -ne 0 ]; then
-    echo "Error: $1 failed"
-    exit 1
-  fi
-}
 
-# Debug function to check if a function exists
-function function_exists() {
-    declare -f "$1" > /dev/null
-    return $?
-}
-
-function isPodRunning() {
+# Check if a pod is running in the specified namespace
+isPodRunning() {
     local podname="$1" namespace="$2"
     if [[ -z "$podname" || -z "$namespace" ]]; then
+        logWithVerboseCheck "$debug" error "Pod name or namespace missing: podname=$podname, namespace=$namespace"
         return 1
     fi
     local pod_status
-    pod_status=$(kubectl get pod "$podname" -n "$namespace" -o jsonpath='{.status.phase}' 2>/dev/null)
-    [[ "$pod_status" == "Running" ]]
+    pod_status=$(run_as_user "kubectl get pod \"$podname\" -n \"$namespace\" -o jsonpath='{.status.phase}' 2>/dev/null")
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        logWithVerboseCheck "$debug" debug "Pod $podname in namespace $namespace not found or error occurred"
+        return 1
+    fi
+    if [[ "$pod_status" == "Running" ]]; then
+        logWithVerboseCheck "$debug" debug "Pod $podname in namespace $namespace is Running"
+        return 0
+    else
+        logWithVerboseCheck "$debug" debug "Pod $podname in namespace $namespace is not Running (status: $pod_status)"
+        return 1
+    fi
 }
 
 isDeployed() {
     local app_name="$1" namespace="$2" pod_name="$3" full_pod_name
     kubectl get namespace "$namespace" >/dev/null 2>&1 || { echo "false"; return; }
-    full_pod_name=$(kubectl get pods -n "$namespace" --no-headers -o custom-columns=":metadata.name" | grep -i "$pod_name" | head -1)
+    full_pod_name=$(run_as_user "kubectl get pods -n \"$namespace\" --no-headers -o custom-columns=\":metadata.name\" | grep -i \"$pod_name\" | head -1")
     if [[ -z "$full_pod_name" ]]; then
         echo "false"
         return
