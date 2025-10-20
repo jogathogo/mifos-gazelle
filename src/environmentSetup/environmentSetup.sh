@@ -208,30 +208,30 @@ function verify_user {
     k8s_user_home=`eval echo "~$k8s_user"`
 }
 
-# MicroK8s is not currently supported but keeping functions around in cse we nee
-function do_microk8s_install {
-    printf "==> Installing Kubernetes MicroK8s & enabling tools (helm, ingress, etc) \n"
-    echo "==> Microk8s Install: installing microk8s release $k8s_user_version ... "
-    rm -rf "$k8s_user_home/.kube" >> /dev/null 2>&1
-    snap install microk8s --classic --channel=$K8S_VERSION/stable
-    microk8s.status --wait-ready
-    microk8s.enable helm3
-    microk8s.enable dns
-    echo "==> enable storage ... "
-    microk8s.enable storage
-    microk8s.enable ingress
-    echo "==> add convenient aliases..."
-    snap alias microk8s.kubectl kubectl
-    snap alias microk8s.helm3 helm
-    echo "==> add $k8s_user user to microk8s group"
-    usermod -a -G microk8s "$k8s_user"
-    mkdir -p "$(dirname "$kubeconfig_path")"
-    microk8s config > "$kubeconfig_path"
-    chown "$k8s_user" "$kubeconfig_path"
-    chmod 600 "$kubeconfig_path"
-    export KUBECONFIG="$kubeconfig_path"
-    logWithVerboseCheck "$debug" debug "Microk8s kubeconfig written to $kubeconfig_path"
-}
+# MicroK8s is not currently supported but keeping functions around in cse we need then later 
+# function do_microk8s_install {
+#     printf "==> Installing Kubernetes MicroK8s & enabling tools (helm, ingress, etc) \n"
+#     echo "==> Microk8s Install: installing microk8s release $k8s_user_version ... "
+#     rm -rf "$k8s_user_home/.kube" >> /dev/null 2>&1
+#     snap install microk8s --classic --channel=$K8S_VERSION/stable
+#     microk8s.status --wait-ready
+#     microk8s.enable helm3
+#     microk8s.enable dns
+#     echo "==> enable storage ... "
+#     microk8s.enable storage
+#     microk8s.enable ingress
+#     echo "==> add convenient aliases..."
+#     snap alias microk8s.kubectl kubectl
+#     snap alias microk8s.helm3 helm
+#     echo "==> add $k8s_user user to microk8s group"
+#     usermod -a -G microk8s "$k8s_user"
+#     mkdir -p "$(dirname "$kubeconfig_path")"
+#     microk8s config > "$kubeconfig_path"
+#     chown "$k8s_user" "$kubeconfig_path"
+#     chmod 600 "$kubeconfig_path"
+#     export KUBECONFIG="$kubeconfig_path"
+#     logWithVerboseCheck "$debug" debug "Microk8s kubeconfig written to $kubeconfig_path"
+# }
 
 function do_k3s_install {
     printf "========================================================================================\n"
@@ -252,7 +252,8 @@ function do_k3s_install {
     export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     sudo chown "$k8s_user" "$KUBECONFIG"
     mkdir -p "$(dirname "$kubeconfig_path")"
-    cp /etc/rancher/k3s/k3s.yaml "$kubeconfig_path"
+    #DEBUG/TODO this needs fixing for local and remote 
+    # cp /etc/rancher/k3s/k3s.yaml "$kubeconfig_path"
     chown "$k8s_user" "$kubeconfig_path"
     chmod 600 "$kubeconfig_path"
     export KUBECONFIG="$kubeconfig_path"
@@ -407,7 +408,11 @@ function setup_k8s_cluster {
         export KUBECONFIG="$kubeconfig_path"
         logWithVerboseCheck "$debug" debug "Using kubeconfig: $KUBECONFIG for remote cluster"
         printf "Verifying connection to the remote Kubernetes cluster...\n"
-        kubectl get nodes >/dev/null 2>&1
+        echo "k8s_user is $k8s_user"
+        #export KUBECONFIG="/home/ubuntu/.kube/config"
+        su - "$k8s_user" -c "echo $KUBECONFIG; kubectl get nodes"
+        #su - "$k8s_user" -c "kubectl --kubeconfig=$KUBECONFIG get nodes"
+
         if [[ $? -eq 0 ]]; then
             printf "Successfully connected to the remote Kubernetes cluster.\n"
             report_cluster_info
@@ -457,16 +462,16 @@ function delete_k8s {
     perl -i -ne 'print unless /START_GAZELLE/ .. /END_GAZELLE/' "$k8s_user_home/.bash_profile"
 }
 
-function checkClusterConnection {
-    export KUBECONFIG="$kubeconfig_path"
-    printf "\r==> Check the cluster is available and ready from kubectl  "
-    k8s_ready=`su - "$k8s_user" -c "kubectl get nodes" | perl -ne 'print if s/^.*Ready.*$/Ready/'`
-    if [[ ! "$k8s_ready" == "Ready" ]]; then
-        printf "** Error: kubernetes is not reachable  ** \n"
-        exit 1
-    fi
-    printf "    [ ok ] \n"
-}
+# function checkClusterConnection {
+#     export KUBECONFIG="$kubeconfig_path"
+#     printf "\r==> Check the cluster is available and ready from kubectl  "
+#     k8s_ready=`su - "$k8s_user" -c "kubectl get nodes" | perl -ne 'print if s/^.*Ready.*$/Ready/'`
+#     if [[ ! "$k8s_ready" == "Ready" ]]; then
+#         printf "** Error: kubernetes is not reachable  ** \n"
+#         exit 1
+#     fi
+#     printf "    [ ok ] \n"
+# }
 
 function print_end_message {
     echo -e "\n${GREEN}============================"
@@ -522,7 +527,7 @@ function install_k8s_tools {
 
 function add_helm_repos {
     printf "\r==> add the helm repos required to install and run infrastructure for vNext, Paymenthub EE and MifosX\n"
-    export KUBECONFIG="$kubeconfig_path"
+    #export KUBECONFIG="$kubeconfig_path"
     su - "$k8s_user" -c "helm repo add kiwigrid https://kiwigrid.github.io" > /dev/null 2>&1
     su - "$k8s_user" -c "helm repo add kokuwa https://kokuwaio.github.io/helm-charts" > /dev/null 2>&1
     su - "$k8s_user" -c "helm repo add codecentric https://codecentric.github.io/helm-charts" > /dev/null 2>&1
@@ -555,95 +560,6 @@ function configure_k8s_user_env {
     fi
 }
 
-# function envSetupMain {
-#     DEFAULT_K8S_DISTRO="k3s"
-#     K8S_VERSION=""
-#     HELM_VERSION="3.18.4"
-#     OS_VERSIONS_LIST=( 22 24 )
-#     K8S_CURRENT_RELEASE_LIST=( "1.31" "1.32" ) 
-#     CURRENT_RELEASE="false"
-#     k8s_user_home=""
-#     k8s_arch=`uname -p`
-#     MIN_RAM=6
-#     MIN_FREE_SPACE=30
-#     LINUX_OS_LIST=( "Ubuntu" )
-#     UBUNTU_OK_VERSIONS_LIST=( 22 24 )
-
-#     if [ "$EUID" -ne 0 ]; then
-#         echo "Please run as root"
-#         exit 1
-#     fi
-
-#     if [ $# -lt 6 ]; then
-#         showUsage
-#         echo "Not enough arguments -m mode, -k k8s_distro, -v k8s_version, -e environment, -u k8s_user, and kubeconfig_path must be specified"
-#         exit 1
-#     fi
-
-#     mode="$1"
-#     k8s_distro="$2"
-#     k8s_user_version="$3"
-#     environment="$4"
-#     k8s_user="$5"
-#     kubeconfig_path="$6"
-
-#     if [[ -z "$kubeconfig_path" ]]; then
-#         k8s_user_home=`eval echo "~$k8s_user"`
-#         kubeconfig_path="$k8s_user_home/.kube/config"
-#         logWithVerboseCheck "$debug" info "No kubeconfig_path provided, defaulting to $kubeconfig_path"
-#     fi
-
-#     logWithVerboseCheck "$debug" info "Starting envSetupMain with mode=$mode, k8s_distro=$k8s_distro, k8s_version=$k8s_user_version, environment=$environment, k8s_user=$k8s_user, kubeconfig_path=$kubeconfig_path"
-
-#     check_arch_ok
-#     verify_user
-#     set_user
-
-#     if [[ "$mode" == "deploy" ]]; then
-#         check_resources_ok
-#         set_k8s_distro
-#         if [[ "$environment" == "local" ]]; then
-#             set_k8s_version
-#             if ! k8s_already_installed; then 
-#                 check_os_ok
-#                 install_prerequisites
-#                 add_hosts
-#                 setup_k8s_cluster "$environment"
-#                 install_nginx "$environment" "$k8s_distro"
-#                 install_k8s_tools
-#                 add_helm_repos
-#                 configure_k8s_user_env
-#                 $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
-#                 printf "\r==> kubernetes distro:[%s] version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
-#                "$k8s_distro" "$K8S_VERSION" "$k8s_user"
-#             else 
-#                 checkHelmandKubectl
-#             fi
-#         else # remote cluster 
-#             check_os_ok
-#             install_prerequisites
-#             setup_k8s_cluster "$environment"
-#             #install_nginx "$environment" "$k8s_distro"
-#             install_k8s_tools
-#             add_helm_repos
-#             configure_k8s_user_env
-#             $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
-#         fi
-#         checkClusterConnection
-
-#         print_end_message
-#     elif [[ "$mode" == "cleanall" ]]; then
-#         if [[ "$environment" == "local" ]]; then
-#             echo "Deleting local kubernetes cluster..."
-#             delete_k8s
-#             echo "Local Kubernetes deleted" 
-#         fi
-#         print_end_message_tear_down
-#     else
-#         showUsage
-#         exit 1
-#     fi
-# }
 
 function envSetupMain {
     if [ "$EUID" -ne 0 ]; then
@@ -656,7 +572,7 @@ function envSetupMain {
         echo "Not enough arguments -m mode, -k k8s_distro, -v k8s_version, -e environment, -u k8s_user, kubeconfig_path, default_k8s_distro, helm_version, k8s_current_release_list, min_ram, min_free_space, linux_os_list, and ubuntu_ok_versions_list must be specified"
         exit 1
     fi
-
+echo "DEBUG1"
     mode="$1"
     k8s_distro="$2"
     k8s_user_version="$3"
@@ -708,20 +624,22 @@ function envSetupMain {
                 add_helm_repos
                 configure_k8s_user_env
                 $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
-            else 
-                checkHelmandKubectl
+            # else 
+            #     checkHelmandKubectl
             fi
         else
+            echo "Remote cluster selected"
             check_os_ok
             install_prerequisites
+            install_k8s_tools
             setup_k8s_cluster "$environment"
             #install_nginx "$environment" "$k8s_distro"
-            install_k8s_tools
+
             add_helm_repos
             configure_k8s_user_env
             #$UTILS_DIR/install-k9s.sh > /dev/null 2>&1
         fi
-        checkClusterConnection
+        # checkClusterConnection
         printf "\r==> kubernetes distro:[%s] version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
                "$k8s_distro" "$K8S_VERSION" "$k8s_user"
         print_end_message

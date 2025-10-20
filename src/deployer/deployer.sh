@@ -258,7 +258,7 @@ function deleteResourcesInNamespaceMatchingPattern() {
     
     # Get namespaces matching the pattern
     echo "DEBUG Fetching namespaces"
-    su - "$k8s_user" -c "kubectl get namespaces" 2>/tmp/kubectl_error.log
+    su - "$k8s_user" -c "kubectl get namespaces" #2>/tmp/kubectl_error.log
     if [ -s /tmp/kubectl_error.log ]; then
         echo "Error fetching namespaces: $(cat /tmp/kubectl_error.log)"
         return 1
@@ -516,7 +516,7 @@ function deployInfrastructure () {
 
   # Update helm dependencies and repo index for infra chart 
   printf  "    updating dependencies for infra helm chart "
-  su - $k8s_user -c "cd $INFRA_CHART_DIR;  helm dep update" >> /dev/null 2>&1 
+  su - $k8s_user -c "cd $INFRA_CHART_DIR;  helm dep update" #>> DEBUG /dev/null 2>&1 
   check_command_execution "Updating dependencies for infra chart"
   echo " [ok] "
 

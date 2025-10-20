@@ -303,13 +303,11 @@ function validateInputs {
             showUsage
             exit 1
         fi
-        # Verify kubeconfig connectivity
-        #`su - "$k8s_user" -c "kubectl get nodes"
-        KUBECONFIG="$kubeconfig_path" su - "$k8s_user" -c "kubectl version" >/dev/null 2>&1
-        if [[ $? -ne 0 ]]; then
-            echo "Error: Cannot connect to the Kubernetes cluster using kubeconfig at '$kubeconfig_path'. Please verify the file and cluster accessibility."
-            exit 1
-        fi
+        # KUBECONFIG="$kubeconfig_path" su - "$k8s_user" -c "kubectl version" >/dev/null 2>&1
+        # if [[ $? -ne 0 ]]; then
+        #     echo "Error: Cannot connect to the Kubernetes cluster using kubeconfig at '$kubeconfig_path'. Please verify the file and cluster accessibility."
+        #     exit 1
+        # fi
     fi
 
     if [[ ! " $linux_os_list " =~ " Ubuntu " ]]; then
