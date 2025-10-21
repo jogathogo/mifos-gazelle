@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # deployer.sh -- the main Mifos Gazelle deployer script
 
-source "$RUN_DIR/src/utils/logger.sh"
-source "$RUN_DIR/src/utils/helpers.sh" 
-source "$RUN_DIR/src/deployer/core.sh"
-source "$RUN_DIR/src/deployer/vnext.sh"
-source "$RUN_DIR/src/deployer/mifosx.sh"
-source "$RUN_DIR/src/deployer/phee.sh"    
+# source "$RUN_DIR/src/utils/logger.sh"
+# source "$RUN_DIR/src/utils/helpers.sh" 
+source "$RUN_DIR/src/deployer/core.sh" || { echo "FATAL: Could not source core.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
+source "$RUN_DIR/src/deployer/vnext.sh" || { echo "FATAL: Could not source vnext.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
+source "$RUN_DIR/src/deployer/mifosx.sh" || { echo "FATAL: Could not source mifosx.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
+source "$RUN_DIR/src/deployer/phee.sh"   || { echo "FATAL: Could not source phee.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }  
 
 function cloneRepo() {
   if [ "$#" -ne 4 ]; then
@@ -87,26 +87,8 @@ function deleteResourcesInNamespaceMatchingPattern() {
         namespace=$(echo "$namespace" | cut -d'/' -f2)
         echo "DEBUG Processing namespace: $namespace"
         if [[ $namespace == "default" ]]; then
-            echo "TODO : remove promethueus install and or move it to infra OR phee namespace"
-            # local deployment_name="prometheus-operator"
-            # local deployment_available
-            # deployment_available=$(su - "$k8s_user" -c "kubectl get deployment \"$deployment_name\" -n default -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" 2>/tmp/kubectl_error.log || true)
-            # if [ -s /tmp/kubectl_error.log ]; then
-            #     echo "Error checking deployment '$deployment_name' in namespace 'default': $(cat /tmp/kubectl_error.log)"
-            # fi
-            # echo "DEBUG Deployment '$deployment_name' availability: $deployment_available"
-            # if [[ "$deployment_available" == "True" ]]; then
-            #     printf "Deleting Prometheus Operator resources in default namespace"
-            #     LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
-            #     su - "$k8s_user" -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl delete -f - -n default" >/tmp/kubectl_delete.log 2>&1
-            #     if [ $? -eq 0 ]; then
-            #         echo " [ok] "
-            #     else
-            #         echo "Warning: there was an issue uninstalling Prometheus Operator resources in default namespace."
-            #         echo "         you can ignore this if Prometheus was not expected to be already running."
-            #         echo "         Error details: $(cat /tmp/kubectl_delete.log)"
-            #     fi
-            # fi
+            # there should not be resources deployed in the defaul namespace so we intentially skip it
+            continue  
         else
             printf "Deleting all resources in namespace $namespace "
             su - "$k8s_user" -c "kubectl delete all --all -n \"$namespace\"" >/tmp/kubectl_delete.log 2>&1

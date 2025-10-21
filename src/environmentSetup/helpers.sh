@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # helper functions for OS and kubernetes environment setup
 
-function () run_as_user { 
+function run_as_user { 
     su - "$k8s_user" -c "export KUBECONFIG=$kubeconfig_path; $1"; 
 }
 

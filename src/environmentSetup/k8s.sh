@@ -84,7 +84,6 @@ function get_ingress_ip {
 
 function install_nginx {
     local cluster_type=$1
-    local k8s_distro=$2
     printf "\r==> Installing NGINX ingress controller and waiting for it to be ready\n"
     if check_nginx_running; then 
         printf "[ NGINX ingress controller already installed and running ]\n"
@@ -94,26 +93,21 @@ function install_nginx {
         return 0 
     fi 
     if [[ "$cluster_type" == "local" ]]; then 
-        if [[ "$k8s_distro" == "microk8s" ]]; then 
-            microk8s.enable ingress
+        export KUBECONFIG="$kubeconfig_path"
+        su - "$k8s_user" -c "helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx" > /dev/null 2>&1
+        su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
+        su - "$k8s_user" -c "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
+        su - "$k8s_user" -c "helm install ingress-nginx ingress-nginx/ingress-nginx \
+                            --create-namespace --namespace ingress-nginx \
+                            --set controller.service.type=NodePort \
+                            --wait --timeout 1200s \
+                            -f $NGINX_VALUES_FILE" > /dev/null 2>&1
+        if check_nginx_running; then 
             printf "[ok]\n"
         else
-            export KUBECONFIG="$kubeconfig_path"
-            su - "$k8s_user" -c "helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx" > /dev/null 2>&1
-            su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
-            su - "$k8s_user" -c "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
-            su - "$k8s_user" -c "helm install ingress-nginx ingress-nginx/ingress-nginx \
-                              --create-namespace --namespace ingress-nginx \
-                              --set controller.service.type=NodePort \
-                              --wait --timeout 1200s \
-                              -f $NGINX_VALUES_FILE" > /dev/null 2>&1
-            if check_nginx_running; then 
-                printf "[ok]\n"
-            else
-                printf "** Error: Helm install of NGINX ingress controller failed, pod is not running **\n"
-                exit 1
-            fi
-        fi 
+            printf "** Error: Helm install of NGINX ingress controller failed, pod is not running **\n"
+            exit 1
+        fi
     else
         export KUBECONFIG="$kubeconfig_path"
         su - "$k8s_user" -c "helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx" > /dev/null 2>&1

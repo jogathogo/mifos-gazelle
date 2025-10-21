@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # environmentSetup.sh -- Mifos Gazelle environment setup script
 
-source "$RUN_DIR/src/utils/logger.sh"
-source "$RUN_DIR/src/utils/helpers.sh" 
-source "$RUN_DIR/src/environmentSetup/helpers.sh"
-source "$RUN_DIR/src/environmentSetup/k8s.sh"
+source "$RUN_DIR/src/utils/logger.sh" || { echo "FATAL: Could not source logger.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
+source "$RUN_DIR/src/utils/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
+source "$RUN_DIR/src/environmentSetup/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
+source "$RUN_DIR/src/environmentSetup/k8s.sh" || { echo "FATAL: Could not source k8s.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
+
+echo "DEBUG0"
 
 function checkHelmandKubectl {
     if ! command -v helm &>/dev/null; then
@@ -22,20 +24,12 @@ function k8s_already_installed {
         printf "==> k3s is already installed **\n"
         return 0
     fi
-    if [[ -f "/snap/bin/microk8s" ]]; then
-        printf "** warning, microk8s is already installed, using existing deployment  **\n"
-        return 0 
-    fi
     return 1
 }
 
 function install_prerequisites {
     printf "\n\r==> Install any OS prerequisites, tools & updates  ...\n"
     if [[ $LINUX_OS == "Ubuntu" ]]; then
-        if [[ $k8s_distro == "microk8s" ]]; then
-            printf "   install snapd\n"
-            apt install snapd -y > /dev/null 2>&1
-        fi
         if ! command -v docker &> /dev/null; then
             logWithVerboseCheck "$debug" debug "Docker is not installed. Installing Docker..."
             apt update >> /dev/null 2>&1
@@ -89,21 +83,6 @@ function add_hosts {
         perl -p -i.bak -e 's/127\.0\.0\.1.*localhost.*$/$ENV{ENDPOINTS} /' /etc/hosts
     else
         printf "==> Skipping /etc/hosts modification for remote environment. Ensure DNS is configured for Mifos Gazelle services.\n"
-    fi
-}
-
-function set_k8s_distro {
-    if [ -z ${k8s_distro+x} ]; then
-        k8s_distro=$DEFAULT_K8S_DISTRO
-        printf "==> Using default kubernetes distro [%s]\n" "$k8s_distro"
-    else
-        k8s_distro=`echo "$k8s_distro" | perl -ne 'print lc'`
-        if [[ "$k8s_distro" == "microk8s" || "$k8s_distro" == "k3s" ]]; then
-            printf "\r==> kubernetes distro set to [%s] \n" "$k8s_distro"
-        else
-            printf "** Error: invalid kubernetes distro specified. Valid options are microk8s or k3s \n"
-            exit 1
-        fi
     fi
 }
 
@@ -198,42 +177,22 @@ function setup_k8s_cluster {
             exit 1
         fi
     elif [[ "$cluster_type" == "local" ]]; then
-        if [[ "$k8s_distro" == "microk8s" ]]; then
-            do_microk8s_install
-        else
-            do_k3s_install
-        fi
+        do_k3s_install
     else
         printf "Invalid choice. Defaulting to local\n"
         cluster_type="local"
-        if [[ "$k8s_distro" == "microk8s" ]]; then
-            do_microk8s_install
-        else
-            do_k3s_install
-        fi
+        do_k3s_install
     fi
 }
 
 function delete_k8s {
-    if [[ "$k8s_distro" == "microk8s" ]]; then
-        printf "==> removing any existing Microk8s installation "
-        snap remove microk8s > /dev/null 2>&1
-        if [[ $? -eq 0 ]]; then
-            printf " [ ok ] \n"
-        else
-            printf " [ microk8s delete failed ] \n"
-            printf "** was microk8s installed ?? \n"
-            printf "   if so please try running \"sudo snap remove microk8s\" manually ** \n"
-        fi
+    printf "==> removing any existing k3s installation and helm binary"
+    rm -f /usr/local/bin/helm >> /dev/null 2>&1
+    /usr/local/bin/k3s-uninstall.sh >> /dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+        printf " [ ok ] \n"
     else
-        printf "==> removing any existing k3s installation and helm binary"
-        rm -f /usr/local/bin/helm >> /dev/null 2>&1
-        /usr/local/bin/k3s-uninstall.sh >> /dev/null 2>&1
-        if [[ $? -eq 0 ]]; then
-            printf " [ ok ] \n"
-        else
-            echo -e "\n==> k3s not installed"
-        fi
+        echo -e "\n==> k3s not installed"
     fi
     perl -i -ne 'print unless /START_GAZELLE/ .. /END_GAZELLE/' "$k8s_user_home/.bashrc"
     perl -i -ne 'print unless /START_GAZELLE/ .. /END_GAZELLE/' "$k8s_user_home/.bash_profile"
@@ -263,13 +222,11 @@ function print_end_message_tear_down {
     echo -e "Copyright © 2023 The Mifos Initiative"
 }
 
-
-
 function configure_k8s_user_env {
     start_message="# GAZELLE_START start of config added by mifos-gazelle #"
     grep "start of config added by mifos-gazelle" "$k8s_user_home/.bashrc" >/dev/null 2>&1
     if [[ $? -ne 0 ]]; then
-        printf "==> Adding configuration for %s to %s .bashrc\n" "$k8s_distro" "$k8s_user"
+        printf "==> Adding kubernetes configuration for %s .bashrc\n" "$k8s_user"
         printf "%s\n" "$start_message" >> "$k8s_user_home/.bashrc"
         echo "source <(kubectl completion bash)" >> "$k8s_user_home/.bashrc"
         echo "alias k=kubectl " >> "$k8s_user_home/.bashrc"
@@ -284,36 +241,35 @@ function configure_k8s_user_env {
         echo "source .bashrc" >> "$k8s_user_home/.bash_profile"
         echo "export KUBECONFIG=$kubeconfig_path" >> "$k8s_user_home/.bash_profile"
     else
-        printf "\r==> Configuration for .bashrc for %s for user %s already exists ..skipping\n" "$k8s_distro" "$k8s_user"
+        printf "\r==> Kubernetes configuration for .bashrc for user %s already exists ..skipping\n" "$k8s_user"
     fi
 }
 
 
 function envSetupMain {
     if [ "$EUID" -ne 0 ]; then
-        echo "Please run as root"
+        echo "Please run using sudo "
         exit 1
     fi
 
-    if [ $# -lt 12 ]; then
+    if [ $# -lt 11 ]; then
         showUsage
-        echo "Not enough arguments -m mode, -k k8s_distro, -v k8s_version, -e environment, -u k8s_user, kubeconfig_path, default_k8s_distro, helm_version, k8s_current_release_list, min_ram, min_free_space, linux_os_list, and ubuntu_ok_versions_list must be specified"
+        echo "Not enough arguments -m mode, -v k8s_version, -e environment, -u k8s_user, kubeconfig_path, helm_version, k8s_current_release_list, min_ram, min_free_space, linux_os_list, and ubuntu_ok_versions_list must be specified"
         exit 1
     fi
 echo "DEBUG1"
+echo "DEBUG RUN_DIR is $RUN_DIR"
     mode="$1"
-    k8s_distro="$2"
-    k8s_user_version="$3"
-    environment="$4"
-    k8s_user="$5"
-    kubeconfig_path="$6"
-    DEFAULT_K8S_DISTRO="$7"
-    HELM_VERSION="$8"
-    K8S_CURRENT_RELEASE_LIST="$9"
-    MIN_RAM="${10}"
-    MIN_FREE_SPACE="${11}"
-    LINUX_OS_LIST="${12}"
-    UBUNTU_OK_VERSIONS_LIST="${13}"
+    k8s_user_version="$2"
+    environment="$3"
+    k8s_user="$4"
+    kubeconfig_path="$5"
+    HELM_VERSION="$6"
+    K8S_CURRENT_RELEASE_LIST="$7"
+    MIN_RAM="${8}"
+    MIN_FREE_SPACE="${9}"
+    LINUX_OS_LIST="${10}"
+    UBUNTU_OK_VERSIONS_LIST="${11}"
 
     # Convert space-separated lists to arrays
     IFS=' ' read -r -a K8S_CURRENT_RELEASE_LIST <<< "$K8S_CURRENT_RELEASE_LIST"
@@ -331,7 +287,7 @@ echo "DEBUG1"
         logWithVerboseCheck "$debug" info "No kubeconfig_path provided, defaulting to $kubeconfig_path"
     fi
 
-    logWithVerboseCheck "$debug" info "Starting envSetupMain with mode=$mode, k8s_distro=$k8s_distro, k8s_version=$k8s_user_version, environment=$environment, k8s_user=$k8s_user, kubeconfig_path=$kubeconfig_path, default_k8s_distro=$DEFAULT_K8S_DISTRO, helm_version=$HELM_VERSION, k8s_current_release_list=${K8S_CURRENT_RELEASE_LIST[*]}, min_ram=$MIN_RAM, min_free_space=$MIN_FREE_SPACE, linux_os_list=${LINUX_OS_LIST[*]}, ubuntu_ok_versions_list=${UBUNTU_OK_VERSIONS_LIST[*]}"
+    logWithVerboseCheck "$debug" info "Starting envSetupMain with mode=$mode, k8s_version=$k8s_user_version, environment=$environment, k8s_user=$k8s_user, kubeconfig_path=$kubeconfig_path, helm_version=$HELM_VERSION, k8s_current_release_list=${K8S_CURRENT_RELEASE_LIST[*]}, min_ram=$MIN_RAM, min_free_space=$MIN_FREE_SPACE, linux_os_list=${LINUX_OS_LIST[*]}, ubuntu_ok_versions_list=${UBUNTU_OK_VERSIONS_LIST[*]}"
 
     check_arch_ok
     verify_user
@@ -339,7 +295,6 @@ echo "DEBUG1"
 
     if [[ "$mode" == "deploy" ]]; then
         check_resources_ok
-        set_k8s_distro
         if [[ "$environment" == "local" ]]; then
             set_k8s_version
             if ! k8s_already_installed; then 
@@ -347,7 +302,7 @@ echo "DEBUG1"
                 install_prerequisites
                 add_hosts
                 setup_k8s_cluster "$environment"
-                install_nginx "$environment" "$k8s_distro"
+                install_nginx "$environment"
                 install_k8s_tools
                 add_helm_repos
                 configure_k8s_user_env
@@ -361,15 +316,15 @@ echo "DEBUG1"
             install_prerequisites
             install_k8s_tools
             setup_k8s_cluster "$environment"
-            #install_nginx "$environment" "$k8s_distro"
+            #install_nginx "$environment"
 
             add_helm_repos
             configure_k8s_user_env
             #$UTILS_DIR/install-k9s.sh > /dev/null 2>&1
         fi
         # checkClusterConnection
-        printf "\r==> kubernetes distro:[%s] version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
-               "$k8s_distro" "$K8S_VERSION" "$k8s_user"
+        printf "\r==> kubernetes k3s version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
+               "$K8S_VERSION" "$k8s_user"
         print_end_message
     elif [[ "$mode" == "cleanall" ]]; then
         if [[ "$environment" == "local" ]]; then
