@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # helper functions for OS and kubernetes environment setup
 
-function run_as_user { 
-    su - "$k8s_user" -c "export KUBECONFIG=$kubeconfig_path; $1"; 
-}
+# function run_as_user { 
+#     su - "$k8s_user" -c "export KUBECONFIG=$kubeconfig_path; $1"; 
+# }
 
 function check_arch_ok {
     local arch=$(uname -m)
     if [[ "$arch" != "x86_64" && "$arch" != "arm64" && "$arch" != "aarch64" ]]; then
-        printf " **** Error: mifos-gazelle only works properly with x86_64, arm64, or aarch64 architectures today  *****\n"
+        printf " **** Error Unknown CPU architecture : mifos-gazelle only works properly with x86_64, arm64, or aarch64 architectures today  *****\n"
         exit 1 
     fi
 }
@@ -47,8 +47,10 @@ function check_os_ok {
         printf "** Error, Mifos Gazelle is only tested with Ubuntu OS at this time   **\n"
         exit 1
     fi
-    if [[ ! " ${UBUNTU_OK_VERSIONS_LIST[*]} " =~ " ${LINUX_VERSION} " ]]; then
-        printf "** Error, Mifos Gazelle is only tested with Ubuntu versions 22.xx or 24.xx at this time   **\n"
+    echo "    Linux OS distro is $LINUX_OS version $LINUX_VERSION"
+    echo "    Supported Ubuntu versions are: ${ubuntu_ok_versions_list[*]}"
+    if [[ ! " ${ubuntu_ok_versions_list[*]} " =~ " ${LINUX_VERSION} " ]]; then
+        printf "** Error, Mifos Gazelle is only tested with Ubuntu this time   **\n"
         exit 1
     fi
 }
@@ -74,7 +76,44 @@ function verify_user {
     k8s_user_home=`eval echo "~$k8s_user"`
 }
 
-function set_user {
-    logWithVerboseCheck "$debug" info "k8s user is $k8s_user"
+# check which kubernetes related tools are installed 
+function checkTools {
+    # Set the default tools to check (helm and kubectl)
+    local tools=("helm" "kubectl")
+
+    # If arguments are provided, use them instead of the default list
+    if [ "$#" -gt 0 ]; then
+        tools=("$@")
+    fi
+
+    # Loop through the list of tools and check each one
+    for tool in "${tools[@]}"; do
+        if ! command -v "$tool" &>/dev/null; then
+            echo "Error: '$tool' is not installed. Check failed." >&2
+            return 1 # Return 1 (failure) without exiting the script
+        fi
+    done
+
+    return 0 # Return 0 (success) if all tools were found
 }
+
+function is_local_k8s_already_installed () {
+    if [[ -f /usr/local/bin/k3s ]]; then
+        echo "local Kubernetes Cluster (k3s) is installed."
+        return 0 # Success
+    else
+        return 1 # Failure
+    fi
+}
+
+
+
+
+# function is_local_k8s_already_installed {
+#     if [[ -f "/usr/local/bin/k3s" ]]; then
+#         printf "==> k3s is already installed **\n"
+#         return 0
+#     fi
+#     return 1
+# }
 

@@ -8,24 +8,6 @@ source "$RUN_DIR/src/environmentSetup/k8s.sh" || { echo "FATAL: Could not source
 
 echo "DEBUG0"
 
-function checkHelmandKubectl {
-    if ! command -v helm &>/dev/null; then
-        echo "Helm is not installed. Please install Helm first."
-        exit 1
-    fi
-    if ! command -v kubectl &>/dev/null; then
-        echo "kubectl is not installed. Please install kubectl first."
-        exit 1
-    fi
-} 
-
-function k8s_already_installed {
-    if [[ -f "/usr/local/bin/k3s" ]]; then
-        printf "==> k3s is already installed **\n"
-        return 0
-    fi
-    return 1
-}
 
 function install_prerequisites {
     printf "\n\r==> Install any OS prerequisites, tools & updates  ...\n"
@@ -94,58 +76,17 @@ function print_current_k8s_releases {
     printf "\n"
 }
 
-function set_k8s_version {
-    if [ ! -z ${k8s_user_version+x} ] ; then
-        k8s_user_version=`echo $k8s_user_version | tr -d A-Z | tr -d a-z `
-        for i in "${K8S_CURRENT_RELEASE_LIST[@]}"; do
-            if [[ "$k8s_user_version" == "$i" ]]; then
-                CURRENT_RELEASE=true
-                break
-            fi
-        done
-        if [[ $CURRENT_RELEASE == true ]]; then
-            K8S_VERSION=$k8s_user_version
-        else
-            printf "** Error: The specified kubernetes release [ %s ] is not a current release \n" "$k8s_user_version"
-            printf "          when using the -v flag you must specify a current supported release \n"
-            print_current_k8s_releases
-            printf "** \n"
-            exit 1
-        fi
-    else
-        printf "** Error: kubernetes release has not been specified with the -v flag  \n"
-        printf "          you must supply the -v flag and specify a current supported release \n\n"
-        showUsage
-        exit 1
-    fi
-    printf "\r==> kubernetes version to install set to [%s] \n" "$K8S_VERSION"
-}
 
-function install_kubectl {
-    printf "\r==> kubectl is not installed. Installing latest stable version...\n"
-    local arch=$(uname -m)
-    local kubectl_arch="amd64"
-    if [[ "$arch" == "arm64" || "$arch" == "aarch64" ]]; then
-        kubectl_arch="arm64"
-    fi
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${kubectl_arch}/kubectl"
-    chmod +x ./kubectl
-    mv ./kubectl /usr/local/bin/kubectl
-    if ! command -v kubectl &>/dev/null; then
-        printf "** Error: Failed to install kubectl **\n"
-        exit 1
-    fi
-    printf "\r==> kubectl installed successfully.\n"
-}
 
-function report_cluster_info {
-    export KUBECONFIG="$kubeconfig_path"
-    num_nodes=$(kubectl get nodes --no-headers | wc -l)
-    k8s_version=$(kubectl version | grep Server | awk '{print $3}')
-    printf "\r==> Cluster is available.\n"
-    printf "    Number of nodes: %s\n" "$num_nodes"
-    printf "    Kubernetes version: %s\n" "$k8s_version"
-}
+
+# function report_cluster_info {
+#     export KUBECONFIG="$kubeconfig_path"
+#     num_nodes=$(kubectl get nodes --no-headers | wc -l)
+#     k8s_version=$(kubectl version | grep Server | awk '{print $3}')
+#     printf "\r==> Cluster is available.\n"
+#     printf "    Number of nodes: %s\n" "$num_nodes"
+#     printf "    Kubernetes version: %s\n" "$k8s_version"
+# }
 
 function setup_k8s_cluster {
     local cluster_type=$1
@@ -158,9 +99,9 @@ function setup_k8s_cluster {
         exit 1
     fi
     if [[ "$cluster_type" == "remote" ]]; then
-        if ! command -v kubectl &>/dev/null; then
-            install_kubectl
-        fi
+        # if ! command -v kubectl &>/dev/null; then
+        #     install_kubectl
+        # fi
         export KUBECONFIG="$kubeconfig_path"
         logWithVerboseCheck "$debug" debug "Using kubeconfig: $KUBECONFIG for remote cluster"
         printf "Verifying connection to the remote Kubernetes cluster...\n"
@@ -197,17 +138,6 @@ function delete_k8s {
     perl -i -ne 'print unless /START_GAZELLE/ .. /END_GAZELLE/' "$k8s_user_home/.bashrc"
     perl -i -ne 'print unless /START_GAZELLE/ .. /END_GAZELLE/' "$k8s_user_home/.bash_profile"
 }
-
-# function checkClusterConnection {
-#     export KUBECONFIG="$kubeconfig_path"
-#     printf "\r==> Check the cluster is available and ready from kubectl  "
-#     k8s_ready=`su - "$k8s_user" -c "kubectl get nodes" | perl -ne 'print if s/^.*Ready.*$/Ready/'`
-#     if [[ ! "$k8s_ready" == "Ready" ]]; then
-#         printf "** Error: kubernetes is not reachable  ** \n"
-#         exit 1
-#     fi
-#     printf "    [ ok ] \n"
-# }
 
 function print_end_message {
     echo -e "\n${GREEN}============================"
@@ -246,95 +176,127 @@ function configure_k8s_user_env {
 }
 
 
-function envSetupMain {
-    if [ "$EUID" -ne 0 ]; then
-        echo "Please run using sudo "
-        exit 1
+
+function envSetupRemoteCluster {
+    check_sudo  # might not be needed for remote but leave for consistency 
+    verify_user
+    # # are helm and  kubectl installed
+    # if ! checkTools kubectl; then
+    #     echo "kubectl is not installed."
+    # fi
+    if [[ "$mode" == "deploy" ]]; then
+        echo "remote- check kubectl" 
+        echo "remote - check connection to cluster"
+    else 
+        if ! is_local_cluster_installed; then
+            printf "==> Local kubernetes cluster is NOT installed\n"
+            exit 1
+        fi
     fi
+} 
 
-    if [ $# -lt 11 ]; then
-        showUsage
-        echo "Not enough arguments -m mode, -v k8s_version, -e environment, -u k8s_user, kubeconfig_path, helm_version, k8s_current_release_list, min_ram, min_free_space, linux_os_list, and ubuntu_ok_versions_list must be specified"
-        exit 1
-    fi
-echo "DEBUG1"
-echo "DEBUG RUN_DIR is $RUN_DIR"
-    mode="$1"
-    k8s_user_version="$2"
-    environment="$3"
-    k8s_user="$4"
-    kubeconfig_path="$5"
-    HELM_VERSION="$6"
-    K8S_CURRENT_RELEASE_LIST="$7"
-    MIN_RAM="${8}"
-    MIN_FREE_SPACE="${9}"
-    LINUX_OS_LIST="${10}"
-    UBUNTU_OK_VERSIONS_LIST="${11}"
+#     # Verify cluster access
+#     echo "DEBUG 6a[envVerify] kubeconfig_path is $kubeconfig_path"
+#     export KUBECONFIG="$kubeconfig_path"
+#     #logWithVerboseCheck "$debug" debug "Verifying cluster access with KUBECONFIG=$KUBECONFIG"
+#     local k8s_ready=$(su - "$k8s_user" -c "kubectl get nodes" | perl -ne 'print if s/^.*Ready.*$/Ready/' || echo "NotReady")
+#     if [[ "$k8s_ready" != "Ready" ]]; then
+#         logWithVerboseCheck "$debug" error "Kubernetes is not reachable or not ready"
+#         exit 1
+#     fi
+#     echo "DEBUG 7a envsetup" 
 
-    # Convert space-separated lists to arrays
-    IFS=' ' read -r -a K8S_CURRENT_RELEASE_LIST <<< "$K8S_CURRENT_RELEASE_LIST"
-    IFS=' ' read -r -a LINUX_OS_LIST <<< "$LINUX_OS_LIST"
-    IFS=' ' read -r -a UBUNTU_OK_VERSIONS_LIST <<< "$UBUNTU_OK_VERSIONS_LIST"
+#     # Ensure user environment is configured
+#     configure_k8s_user_env
+#     logWithVerboseCheck "$debug" info "Environment verification completed"
+# }
 
-    K8S_VERSION=""
-    CURRENT_RELEASE="false"
-    k8s_user_home=""
-    k8s_arch=`uname -p`
 
-    if [[ -z "$kubeconfig_path" ]]; then
-        k8s_user_home=`eval echo "~$k8s_user"`
-        kubeconfig_path="$k8s_user_home/.kube/config"
-        logWithVerboseCheck "$debug" info "No kubeconfig_path provided, defaulting to $kubeconfig_path"
-    fi
+# function envSetupLocalCluster {
+#     local mode="$1"
 
-    logWithVerboseCheck "$debug" info "Starting envSetupMain with mode=$mode, k8s_version=$k8s_user_version, environment=$environment, k8s_user=$k8s_user, kubeconfig_path=$kubeconfig_path, helm_version=$HELM_VERSION, k8s_current_release_list=${K8S_CURRENT_RELEASE_LIST[*]}, min_ram=$MIN_RAM, min_free_space=$MIN_FREE_SPACE, linux_os_list=${LINUX_OS_LIST[*]}, ubuntu_ok_versions_list=${UBUNTU_OK_VERSIONS_LIST[*]}"
+#     check_sudo
+#     check_arch_ok
+#     verify_user
+#     check_os_ok
+#     if [[ "$mode" == "deploy" ]]; then
+#         check_resources_ok
+#         install_prerequisites
+#     else 
+#         if ! is_local_k8s_already_installed; then
+#             printf "==> Local kubernetes cluster is NOT installed\n"
+#             exit 1
+#         fi
+#     fi
+# } 
 
+function envSetupLocalCluster {
+    local mode="$1"
+    check_sudo
     check_arch_ok
     verify_user
-    set_user
+    check_os_ok  
+    install_k8s_tools
 
     if [[ "$mode" == "deploy" ]]; then
         check_resources_ok
-        if [[ "$environment" == "local" ]]; then
-            set_k8s_version
-            if ! k8s_already_installed; then 
-                check_os_ok
-                install_prerequisites
-                add_hosts
-                setup_k8s_cluster "$environment"
-                install_nginx "$environment"
-                install_k8s_tools
-                add_helm_repos
-                configure_k8s_user_env
-                $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
-            # else 
-            #     checkHelmandKubectl
-            fi
-        else
-            echo "Remote cluster selected"
-            check_os_ok
-            install_prerequisites
-            install_k8s_tools
+        install_prerequisites
+        if ! is_local_k8s_already_installed; then
+            add_hosts
             setup_k8s_cluster "$environment"
-            #install_nginx "$environment"
-
+            install_nginx "$environment"
             add_helm_repos
-            configure_k8s_user_env
-            #$UTILS_DIR/install-k9s.sh > /dev/null 2>&1
+            $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
+        # else
+        #     checkHelmandKubectl
         fi
-        # checkClusterConnection
         printf "\r==> kubernetes k3s version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
-               "$K8S_VERSION" "$k8s_user"
+               "$k8s_version" "$k8s_user"
         print_end_message
-    elif [[ "$mode" == "cleanall" ]]; then
-        if [[ "$environment" == "local" ]]; then
-            echo "Deleting local kubernetes cluster..."
-            delete_k8s
-            echo "Local Kubernetes deleted" 
+    elif [[ "$mode" == "cleanapps" ]]; then
+        if ! is_local_k8s_already_installed; then
+            printf "==> Local kubernetes cluster is NOT installed\n"
+            exit 1
         fi
+    elif [[ "$mode" == "cleanall" ]]; then
+        echo "Deleting local kubernetes cluster..."
+        if ! is_local_k8s_already_installed; then
+            printf "==> Local kubernetes cluster is NOT installed\n"
+            exit 1
+        fi
+        delete_k8s
+        echo "Local Kubernetes deleted"
         print_end_message_tear_down
     else
         showUsage
         exit 1
     fi
-}
+}   
+
+function envSetupMain {
+    local mode="$1"
+
+echo "DEBUG10 envsetuptools" 
+    install_k8s_tools
+    # K8S_VERSION=""
+    # CURRENT_RELEASE="false"
+    # k8s_arch=$(uname -p)
+
+
+    # # is kubectl installed
+    # if ! checkTools kubectl; then
+    #     echo "kubectl is not installed."
+    # fi
+
+    echo "DEBUG9 [envsetupMain] k8s_version is $k8s_version"
+    #install_prerequisites
+    if [[ "$environment" == "local" ]]; then
+        envSetupLocalCluster "$mode"
+    elif [[ "$environment" == "remote" ]]; then
+        envSetupRemoteCluster "$mode"
+    else
+        printf "** Error: Invalid environment type specified: %s. Must be 'local' or 'remote'. **\n" "$environment"
+        exit 1
+    fi
+} 
+

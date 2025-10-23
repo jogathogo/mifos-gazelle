@@ -7,6 +7,13 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     exit 1
 fi
 
+function check_sudo() {
+    if [[ $EUID -ne 0 ]]; then
+        printf "** Error: This script must be run with sudo or as root user ** \n"
+        exit 1
+    fi
+}
+
 # Run a command as the non-root k8s_user with KUBECONFIG set
 run_as_user() {
     local command="$1"
@@ -35,3 +42,4 @@ function function_exists() {
     declare -f "$1" > /dev/null
     return $?
 }
+

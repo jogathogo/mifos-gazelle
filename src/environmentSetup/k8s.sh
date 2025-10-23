@@ -130,6 +130,11 @@ function install_nginx {
 function install_k8s_tools {
     printf "\r==> Checking and installing Kubernetes tools\n"
 
+    # --- NOTE ON VERSIONING ---
+    # Define these versions globally (or ensure they are passed in)
+    local kubectl_version="v1.30.0"
+    local helm_version="v3.14.4"
+
     # Detect architecture
     ARCH=$(uname -m)
     case "$ARCH" in
@@ -137,31 +142,59 @@ function install_k8s_tools {
         aarch64|arm64) ARCH_TYPE="arm64" ;;
         *) echo "Unsupported architecture: $ARCH"; return 1 ;;
     esac
+    echo "Detected architecture: $ARCH_TYPE (Using version kubectl $kubectl_version and helm $helm_version)"
 
     # Array of tools and their installation details
     declare -A tools=(
+        # kubectl uses the official download site, which provides the executable directly.
+        ["kubectl"]="https://dl.k8s.io/release/${kubectl_version}/bin/linux/${ARCH_TYPE}/kubectl"
         ["kubens"]="https://github.com/ahmetb/kubectx/releases/download/v0.9.4/kubens_v0.9.4_linux_${ARCH_TYPE}.tar.gz"
         ["kubectx"]="https://github.com/ahmetb/kubectx/releases/download/v0.9.4/kubectx_v0.9.4_linux_${ARCH_TYPE}.tar.gz"
         ["kustomize"]="https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
         ["k9s"]="https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_${ARCH_TYPE}.tar.gz"
-        ["helm"]="https://get.helm.sh/helm-v3.16.2-linux-${ARCH_TYPE}.tar.gz"
+        ["helm"]="https://get.helm.sh/helm-${helm_version}-linux-${ARCH_TYPE}.tar.gz"
     )
 
     for tool in "${!tools[@]}"; do
         if command -v "$tool" >/dev/null 2>&1; then
+            if [[ "$debug" == "true" ]]; then
+                echo "DEBUG: $tool is already installed at $(command -v $tool)"
+            fi
+            echo "$tool is already installed. Skipping."
             continue
         else
+            echo "Installing $tool..."
+            # Installation logic
             if [[ "$tool" == "kustomize" ]]; then
+                # kustomize uses a special install script
                 curl -s "${tools[$tool]}" | bash > /dev/null 2>&1
+
+            elif [[ "$tool" == "kubectl" ]]; then
+                # kubectl is a direct executable download, so we save it and make it executable
+                curl -s -L "${tools[$tool]}" -o ./"$tool"
+                chmod +x ./"$tool"
+
             else
+                # Install archives (kubens, kubectx, k9s, helm)
                 curl -s -L "${tools[$tool]}" | tar xz -C . > /dev/null 2>&1
                 if [[ "$tool" == "helm" ]]; then
+                    # Helm has a nested structure after extraction
                     mv linux-${ARCH_TYPE}/helm ./"$tool" > /dev/null 2>&1
                     rm -rf linux-${ARCH_TYPE} > /dev/null 2>&1
                 fi
             fi
-            mv ./"$tool" /usr/local/bin > /dev/null 2>&1
-            echo "$tool installed successfully"
+
+            # Move the resulting executable(s) to the bin path
+            if [[ "$tool" != "kustomize" ]]; then
+                mv ./"$tool" /usr/local/bin > /dev/null 2>&1
+            fi
+            
+            # Verify installation
+            if command -v "$tool" >/dev/null 2>&1; then
+                echo "$tool installed successfully."
+            else
+                echo "Error: $tool installation failed."
+            fi
         fi
     done
 }
