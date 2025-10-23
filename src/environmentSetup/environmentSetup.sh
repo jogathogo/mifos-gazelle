@@ -1,47 +1,43 @@
 #!/usr/bin/env bash
 # environmentSetup.sh -- Mifos Gazelle environment setup script
 
-source "$RUN_DIR/src/utils/logger.sh" || { echo "FATAL: Could not source logger.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
-source "$RUN_DIR/src/utils/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
+#source "$RUN_DIR/src/utils/logger.sh" || { echo "FATAL: Could not source logger.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
+#source "$RUN_DIR/src/utils/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/environmentSetup/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/environmentSetup/k8s.sh" || { echo "FATAL: Could not source k8s.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 
-echo "DEBUG0"
-
-
-function install_prerequisites {
-    printf "\n\r==> Install any OS prerequisites, tools & updates  ...\n"
-    if [[ $LINUX_OS == "Ubuntu" ]]; then
-        if ! command -v docker &> /dev/null; then
-            logWithVerboseCheck "$debug" debug "Docker is not installed. Installing Docker..."
-            apt update >> /dev/null 2>&1
-            apt install -y apt-transport-https ca-certificates curl software-properties-common >> /dev/null 2>&1
-            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg >> /dev/null 2>&1
-            echo "deb [signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list >> /dev/null 2>&1
-            apt update >> /dev/null 2>&1
-            apt install -y docker-ce docker-ce-cli containerd.io >> /dev/null 2>&1
-            usermod -aG docker "$k8s_user"
-            printf "ok \n"
-        else
-            logWithVerboseCheck "$debug" debug "Docker is already installed.\n"
-        fi
-        if ! command -v nc &> /dev/null; then
-            logWithVerboseCheck "$debug" debug "nc (netcat) is not installed. Installing..."
-            apt-get update >> /dev/null 2>&1
-            apt-get install -y netcat >> /dev/null 2>&1
-            printf "ok\n"
-        else
-            logWithVerboseCheck "$debug" debug "nc (netcat) is already installed.\n"
-        fi
-        if ! command -v jq &> /dev/null; then
-            logWithVerboseCheck "$debug" debug "jq is not installed. Installing ..."
-            apt-get update >> /dev/null 2>&1
-            apt-get -y install jq >> /dev/null 2>&1
-            printf "ok\n"
-        else
-            logWithVerboseCheck "$debug" debug "jq is already installed\n"
-        fi
+function install_os_prerequisites {
+    printf "\n\r==> Check & install operating system packages" 
+    if ! command -v docker &> /dev/null; then
+        logWithVerboseCheck "$debug" debug "Docker is not installed. Installing Docker..."
+        apt update >> /dev/null 2>&1
+        apt install -y apt-transport-https ca-certificates curl software-properties-common >> /dev/null 2>&1
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg >> /dev/null 2>&1
+        echo "deb [signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list >> /dev/null 2>&1
+        apt update >> /dev/null 2>&1
+        apt install -y docker-ce docker-ce-cli containerd.io >> /dev/null 2>&1
+        usermod -aG docker "$k8s_user"
+        printf "   ok \n"
+    else
+        logWithVerboseCheck "$debug" debug "Docker is already installed.\n"
     fi
+    if ! command -v nc &> /dev/null; then
+        logWithVerboseCheck "$debug" debug "nc (netcat) is not installed. Installing..."
+        apt-get update >> /dev/null 2>&1
+        apt-get install -y netcat >> /dev/null 2>&1
+        printf "ok\n"
+    else
+        logWithVerboseCheck "$debug" debug "nc (netcat) is already installed.\n"
+    fi
+    if ! command -v jq &> /dev/null; then
+        logWithVerboseCheck "$debug" debug "jq is not installed. Installing ..."
+        apt-get update >> /dev/null 2>&1
+        apt-get -y install jq >> /dev/null 2>&1
+        printf "ok\n"
+    else
+        logWithVerboseCheck "$debug" debug "jq is already installed\n"
+    fi
+    printf "       [ok]\n"
 }
 
 function add_hosts {
@@ -68,66 +64,51 @@ function add_hosts {
     fi
 }
 
-function print_current_k8s_releases {
-    printf "          Current Kubernetes releases are: "
-    for i in "${K8S_CURRENT_RELEASE_LIST[@]}"; do
-        printf " [v%s]" "$i"
-    done
-    printf "\n"
-}
-
-
-
-
-# function report_cluster_info {
-#     export KUBECONFIG="$kubeconfig_path"
-#     num_nodes=$(kubectl get nodes --no-headers | wc -l)
-#     k8s_version=$(kubectl version | grep Server | awk '{print $3}')
-#     printf "\r==> Cluster is available.\n"
-#     printf "    Number of nodes: %s\n" "$num_nodes"
-#     printf "    Kubernetes version: %s\n" "$k8s_version"
+# TODO remove if not needed
+# function print_current_k8s_releases {
+#     printf "          Current Kubernetes releases are: "
+#     for i in "${K8S_CURRENT_RELEASE_LIST[@]}"; do
+#         printf " [v%s]" "$i"
+#     done
+#     printf "\n"
 # }
 
-function setup_k8s_cluster {
-    local cluster_type=$1
-    if [ -z "$cluster_type" ]; then
-        printf "Cluster type not set. Defaulting to local\n"
-        cluster_type="local"
-    fi
-    if [[ ! -f "$kubeconfig_path" && "$cluster_type" == "remote" ]]; then
-        printf "** Error: kubeconfig file at %s does not exist for remote cluster **\n" "$kubeconfig_path"
-        exit 1
-    fi
-    if [[ "$cluster_type" == "remote" ]]; then
-        # if ! command -v kubectl &>/dev/null; then
-        #     install_kubectl
-        # fi
-        export KUBECONFIG="$kubeconfig_path"
-        logWithVerboseCheck "$debug" debug "Using kubeconfig: $KUBECONFIG for remote cluster"
-        printf "Verifying connection to the remote Kubernetes cluster...\n"
-        echo "k8s_user is $k8s_user"
-        #export KUBECONFIG="/home/ubuntu/.kube/config"
-        su - "$k8s_user" -c "echo $KUBECONFIG; kubectl get nodes"
-        #su - "$k8s_user" -c "kubectl --kubeconfig=$KUBECONFIG get nodes"
+# function install_k8s_local_cluster {
+#     local cluster_type=$1
+#     # if [[ ! -f "$kubeconfig_path" && "$cluster_type" == "remote" ]]; then
+#     #     printf "** Error: kubeconfig file at %s does not exist for remote cluster **\n" "$kubeconfig_path"
+#     #     exit 1
+#     # fi
+#     if [[ "$cluster_type" == "remote" ]]; then
+#         # if ! command -v kubectl &>/dev/null; then
+#         #     install_kubectl
+#         # fi
+#         export KUBECONFIG="$kubeconfig_path"
+#         logWithVerboseCheck "$debug" debug "Using kubeconfig: $KUBECONFIG for remote cluster"
+#         printf "Verifying connection to the remote Kubernetes cluster...\n"
+#         echo "k8s_user is $k8s_user"
+#         #export KUBECONFIG="/home/ubuntu/.kube/config"
+#         su - "$k8s_user" -c "echo $KUBECONFIG; kubectl get nodes"
+#         #su - "$k8s_user" -c "kubectl --kubeconfig=$KUBECONFIG get nodes"
 
-        if [[ $? -eq 0 ]]; then
-            printf "Successfully connected to the remote Kubernetes cluster.\n"
-            report_cluster_info
-        else
-            printf "** Error: Failed to connect to the remote Kubernetes cluster. Ensure the kubeconfig file at %s is valid and the cluster is accessible.\n" "$kubeconfig_path"
-            exit 1
-        fi
-    elif [[ "$cluster_type" == "local" ]]; then
-        do_k3s_install
-    else
-        printf "Invalid choice. Defaulting to local\n"
-        cluster_type="local"
-        do_k3s_install
-    fi
-}
+#         if [[ $? -eq 0 ]]; then
+#             printf "Successfully connected to the remote Kubernetes cluster.\n"
+#             report_cluster_info
+#         else
+#             printf "** Error: Failed to connect to the remote Kubernetes cluster. Ensure the kubeconfig file at %s is valid and the cluster is accessible.\n" "$kubeconfig_path"
+#             exit 1
+#         fi
+#     elif [[ "$cluster_type" == "local" ]]; then
+#         do_k3s_install
+#     else
+#         printf "Invalid choice. Defaulting to local\n"
+#         cluster_type="local"
+#         do_k3s_install
+#     fi
+# }
 
-function delete_k8s {
-    printf "==> removing any existing k3s installation and helm binary"
+function delete_k8s_local_cluster {
+    printf "    removing local kubernetes cluster   "
     rm -f /usr/local/bin/helm >> /dev/null 2>&1
     /usr/local/bin/k3s-uninstall.sh >> /dev/null 2>&1
     if [[ $? -eq 0 ]]; then
@@ -175,8 +156,6 @@ function configure_k8s_user_env {
     fi
 }
 
-
-
 function envSetupRemoteCluster {
     check_sudo  # might not be needed for remote but leave for consistency 
     verify_user
@@ -195,77 +174,61 @@ function envSetupRemoteCluster {
     fi
 } 
 
-#     # Verify cluster access
-#     echo "DEBUG 6a[envVerify] kubeconfig_path is $kubeconfig_path"
-#     export KUBECONFIG="$kubeconfig_path"
-#     #logWithVerboseCheck "$debug" debug "Verifying cluster access with KUBECONFIG=$KUBECONFIG"
-#     local k8s_ready=$(su - "$k8s_user" -c "kubectl get nodes" | perl -ne 'print if s/^.*Ready.*$/Ready/' || echo "NotReady")
-#     if [[ "$k8s_ready" != "Ready" ]]; then
-#         logWithVerboseCheck "$debug" error "Kubernetes is not reachable or not ready"
-#         exit 1
-#     fi
-#     echo "DEBUG 7a envsetup" 
-
-#     # Ensure user environment is configured
-#     configure_k8s_user_env
-#     logWithVerboseCheck "$debug" info "Environment verification completed"
-# }
-
-
-# function envSetupLocalCluster {
-#     local mode="$1"
-
-#     check_sudo
-#     check_arch_ok
-#     verify_user
-#     check_os_ok
-#     if [[ "$mode" == "deploy" ]]; then
-#         check_resources_ok
-#         install_prerequisites
-#     else 
-#         if ! is_local_k8s_already_installed; then
-#             printf "==> Local kubernetes cluster is NOT installed\n"
-#             exit 1
-#         fi
-#     fi
-# } 
+is_cluster_accessible() {
+    local k8s_user_cmd="kubectl get nodes --request-timeout=5s"
+    local k8s_user_status
+    
+    # Cluster reachable check
+    if ! su - "$k8s_user" -c "$k8s_user_cmd" > /dev/null 2>&1; then
+        # The command failed (e.g., cluster unreachable, bad auth, or bad 'k8s_user' setup)
+        return 1
+    fi
+    
+    # Check for at least 1 node being ready
+    local ready_nodes=$(su - "$k8s_user" -c "$k8s_user_cmd" | grep -c " Ready ")    
+    if [[ "$ready_nodes" -eq 0 ]]; then
+        # This means we could access the cluster, but no nodes are reported as Ready.
+        logWithVerboseCheck "$debug" info "Kubernetes cluster is reachable, but zero nodes are in the 'Ready' state."
+        return 1
+    fi
+    return 0
+}
 
 function envSetupLocalCluster {
     local mode="$1"
-    check_sudo
-    check_arch_ok
-    verify_user
-    check_os_ok  
-    install_k8s_tools
 
     if [[ "$mode" == "deploy" ]]; then
         check_resources_ok
-        install_prerequisites
-        if ! is_local_k8s_already_installed; then
+        install_os_prerequisites
+        if ! is_local_cluster_installed; then
             add_hosts
-            setup_k8s_cluster "$environment"
-            install_nginx "$environment"
+            #install_k8s_local_cluster "$environment"
+            install_k3s
+            install_nginx
             add_helm_repos
             $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
-        # else
-        #     checkHelmandKubectl
         fi
-        printf "\r==> kubernetes k3s version:[%s] is now configured for user [%s] and ready for Mifos Gazelle deployment\n" \
-               "$k8s_version" "$k8s_user"
+        printf "\r==> kubernetes k3s version:[%s] now configured for user [%s] and ready \n" \
+                  "$k8s_version" "$k8s_user"
         print_end_message
     elif [[ "$mode" == "cleanapps" ]]; then
-        if ! is_local_k8s_already_installed; then
-            printf "==> Local kubernetes cluster is NOT installed\n"
+        if ! is_local_cluster_installed; then
+            printf "    ** Error:  Local kubernetes cluster is NOT installed   \n\n"
+            exit 1
+        fi
+        if ! is_cluster_accessible; then
+            printf "    ** Error: Local kubernetes cluster is NOT accessible   \n\n"
             exit 1
         fi
     elif [[ "$mode" == "cleanall" ]]; then
-        echo "Deleting local kubernetes cluster..."
-        if ! is_local_k8s_already_installed; then
-            printf "==> Local kubernetes cluster is NOT installed\n"
+        printf "\n==> Deleting local kubernetes cluster...  \n"
+        if ! is_local_cluster_installed; then
+            printf "    Local kubernetes cluster is NOT installed   \n"
+            printf "    Nothing to delete. Exiting.\n\n"
             exit 1
         fi
-        delete_k8s
-        echo "Local Kubernetes deleted"
+        delete_k8s_local_cluster
+        echo "Local Kubernetes cluster deleted"
         print_end_message_tear_down
     else
         showUsage
@@ -276,23 +239,17 @@ function envSetupLocalCluster {
 function envSetupMain {
     local mode="$1"
 
-echo "DEBUG10 envsetuptools" 
+    check_sudo
+    check_arch_ok
+    verify_user
+    check_os_ok  
+    install_os_prerequisites
     install_k8s_tools
-    # K8S_VERSION=""
-    # CURRENT_RELEASE="false"
-    # k8s_arch=$(uname -p)
 
-
-    # # is kubectl installed
-    # if ! checkTools kubectl; then
-    #     echo "kubectl is not installed."
-    # fi
-
-    echo "DEBUG9 [envsetupMain] k8s_version is $k8s_version"
-    #install_prerequisites
     if [[ "$environment" == "local" ]]; then
         envSetupLocalCluster "$mode"
     elif [[ "$environment" == "remote" ]]; then
+        #echo "DEBUG 12 [envsetupMain] calling RemoteCluster"
         envSetupRemoteCluster "$mode"
     else
         printf "** Error: Invalid environment type specified: %s. Must be 'local' or 'remote'. **\n" "$environment"

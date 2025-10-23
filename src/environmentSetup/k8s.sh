@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # kubernetes specific functions 
 
-function do_k3s_install {
+function install_k3s {
     printf "========================================================================================\n"
-    printf "Mifos-gazelle k3s install: Installing Kubernetes k3s engine and tools (helm/ingress etc) \n"
+    printf "Mifos Gazelle local cluster installation \n"
     printf "========================================================================================\n"
+    # TODO check this i.e. do we need to remove old kube config like this 
     rm -rf "$k8s_user_home/.kube" >> /dev/null 2>&1
     printf "\r==> installing k3s "
+    echo "k8s_version is $k8s_version"
     curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" \
-                            INSTALL_K3S_CHANNEL="v$K8S_VERSION" \
+                            INSTALL_K3S_CHANNEL="v$k8s_version" \
                             INSTALL_K3S_EXEC=" --disable traefik " sh > /dev/null 2>&1
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    k3s check-config
     status=`k3s check-config 2> /dev/null | grep "^STATUS" | awk '{print $2}' `
     if [[ "$status" != "pass" ]]; then
         printf "** Error: k3s check-config not reporting status of pass   ** \n"
@@ -20,38 +24,17 @@ function do_k3s_install {
     export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     sudo chown "$k8s_user" "$KUBECONFIG"
     mkdir -p "$(dirname "$kubeconfig_path")"
-    #DEBUG/TODO this needs fixing for local and remote 
-    # cp /etc/rancher/k3s/k3s.yaml "$kubeconfig_path"
+    #DEBUG/TODO this needs fixing ans testing to support  local and remote configs 
+    cp /etc/rancher/k3s/k3s.yaml "$kubeconfig_path"
     chown "$k8s_user" "$kubeconfig_path"
     chmod 600 "$kubeconfig_path"
     export KUBECONFIG="$kubeconfig_path"
     logWithVerboseCheck "$debug" debug "k3s kubeconfig copied to $kubeconfig_path"
-    # printf "\r==> installing helm "
-    # helm_arch_str=""
-    # if [[ "$k8s_arch" == "x86_64" ]]; then
-    #     helm_arch_str="amd64"
-    # elif [[ "$k8s_arch" == "aarch64" ]]; then
-    #     helm_arch_str="arm64"
-    # else
-    #     printf "** Error: architecture not recognised as x86_64 or arm64  ** \n"
-    #     exit 1
-    # fi
-    # rm -rf /tmp/linux-"$helm_arch_str" /tmp/helm.tar
-    # curl -L -s -o /tmp/helm.tar.gz https://get.helm.sh/helm-v$HELM_VERSION-linux-"$helm_arch_str".tar.gz
-    # gzip -d /tmp/helm.tar.gz
-    # tar xf /tmp/helm.tar -C /tmp
-    # mv /tmp/linux-"$helm_arch_str"/helm /usr/local/bin
-    # rm -rf /tmp/linux-"$helm_arch_str"
-    # /usr/local/bin/helm version > /dev/null 2>&1
-    # if [[ $? -ne 0 ]]; then
-    #     printf "** Error: helm install seems to have failed ** \n"
-    #     exit 1
-    # fi
     printf "[ok]\n"
 }
 
 function check_nginx_running {
-    export KUBECONFIG="$kubeconfig_path"
+    #export KUBECONFIG="$kubeconfig_path"
     nginx_pod_name=$(kubectl get pods -n ingress-nginx --no-headers -o custom-columns=":metadata.name" | grep nginx | head -n 1)
     if [ -z "$nginx_pod_name" ]; then
         return 1
@@ -65,7 +48,7 @@ function check_nginx_running {
 }
 
 function get_ingress_ip {
-    export KUBECONFIG="$kubeconfig_path"
+
     ingress_ip=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
     if [ -z "$ingress_ip" ]; then
         ingress_ip=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
@@ -83,17 +66,16 @@ function get_ingress_ip {
 }
 
 function install_nginx {
-    local cluster_type=$1
     printf "\r==> Installing NGINX ingress controller and waiting for it to be ready\n"
     if check_nginx_running; then 
         printf "[ NGINX ingress controller already installed and running ]\n"
-        if [[ "$cluster_type" == "remote" ]]; then
+        if [[ "$envionment" == "remote" ]]; then
             get_ingress_ip
         fi
         return 0 
     fi 
-    if [[ "$cluster_type" == "local" ]]; then 
-        export KUBECONFIG="$kubeconfig_path"
+    if [[ "$environment" == "local" ]]; then 
+        #export KUBECONFIG="$kubeconfig_path"
         su - "$k8s_user" -c "helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx" > /dev/null 2>&1
         su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
         su - "$k8s_user" -c "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
@@ -109,7 +91,7 @@ function install_nginx {
             exit 1
         fi
     else
-        export KUBECONFIG="$kubeconfig_path"
+        #export KUBECONFIG="$kubeconfig_path"
         su - "$k8s_user" -c "helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx" > /dev/null 2>&1
         su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
         su - "$k8s_user" -c "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
@@ -128,9 +110,10 @@ function install_nginx {
 }
 
 function install_k8s_tools {
-    printf "\r==> Checking and installing Kubernetes tools\n"
+    printf "\r==> Checking and installing Kubernetes tools     "
 
     # --- NOTE ON VERSIONING ---
+    # TODO 
     # Define these versions globally (or ensure they are passed in)
     local kubectl_version="v1.30.0"
     local helm_version="v3.14.4"
@@ -140,9 +123,8 @@ function install_k8s_tools {
     case "$ARCH" in
         x86_64) ARCH_TYPE="amd64" ;;
         aarch64|arm64) ARCH_TYPE="arm64" ;;
-        *) echo "Unsupported architecture: $ARCH"; return 1 ;;
+        *) echo "Unsupported architecture: $ARCH"; echo "error ***  Wrong CPU Type ****" ; exit 1 ;;
     esac
-    echo "Detected architecture: $ARCH_TYPE (Using version kubectl $kubectl_version and helm $helm_version)"
 
     # Array of tools and their installation details
     declare -A tools=(
@@ -158,12 +140,12 @@ function install_k8s_tools {
     for tool in "${!tools[@]}"; do
         if command -v "$tool" >/dev/null 2>&1; then
             if [[ "$debug" == "true" ]]; then
-                echo "DEBUG: $tool is already installed at $(command -v $tool)"
+                echo "    $tool is already installed. Skipping."
             fi
-            echo "$tool is already installed. Skipping."
+            
             continue
         else
-            echo "Installing $tool..."
+            #echo "Installing $tool..."
             # Installation logic
             if [[ "$tool" == "kustomize" ]]; then
                 # kustomize uses a special install script
@@ -191,17 +173,19 @@ function install_k8s_tools {
             
             # Verify installation
             if command -v "$tool" >/dev/null 2>&1; then
-                echo "$tool installed successfully."
+                if [[ "$debug" == "true" ]]; then
+                    echo "    $tool installed successfully."
+                fi
             else
                 echo "Error: $tool installation failed."
             fi
         fi
     done
+    printf "   [ok]\n"
 }
 
 function add_helm_repos {
     printf "\r==> add the helm repos required to install and run infrastructure for vNext, Paymenthub EE and MifosX\n"
-    #export KUBECONFIG="$kubeconfig_path"
     su - "$k8s_user" -c "helm repo add kiwigrid https://kiwigrid.github.io" > /dev/null 2>&1
     su - "$k8s_user" -c "helm repo add kokuwa https://kokuwaio.github.io/helm-charts" > /dev/null 2>&1
     su - "$k8s_user" -c "helm repo add codecentric https://codecentric.github.io/helm-charts" > /dev/null 2>&1
@@ -212,7 +196,7 @@ function add_helm_repos {
 }
 
 function report_cluster_info {
-    export KUBECONFIG="$kubeconfig_path"
+    #export KUBECONFIG="$kubeconfig_path"
     num_nodes=$(kubectl get nodes --no-headers | wc -l)
     k8s_version=$(kubectl version | grep Server | awk '{print $3}')
     printf "\r==> Cluster is available.\n"

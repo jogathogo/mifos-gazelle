@@ -57,51 +57,107 @@ function cloneRepo() {
 }
 
 function deleteResourcesInNamespaceMatchingPattern() {
-    local pattern="$1"  
+    local pattern="$1"
+    local exit_code=0 # Initialize exit code
+
     # Check if the pattern is provided
     if [ -z "$pattern" ]; then
-        echo "Pattern not provided."
+        echo "Error: Pattern not provided."
         return 1
     fi
+      
+    #echo "DEBUG: Fetching namespaces matching pattern '$pattern'..."
     
-    # Get namespaces matching the pattern
-    echo "DEBUG Fetching namespaces"
-    su - "$k8s_user" -c "kubectl get namespaces" #2>/tmp/kubectl_error.log
-    if [ -s /tmp/kubectl_error.log ]; then
-        echo "Error fetching namespaces: $(cat /tmp/kubectl_error.log)"
-        return 1
-    fi
+    # Get all namespaces and filter them locally.
+    local all_namespaces_output
+    all_namespaces_output=$(run_as_user "kubectl get namespaces -o name" 2>&1)
+    
+    # Filter the output for namespaces matching the pattern, stripping the "namespace/" prefix.
+    local matching_namespaces
+    # The grep command will set $? to 1 if no matches are found, but we want the script to continue.
+    matching_namespaces=$(echo "$all_namespaces_output" | grep -E "$pattern" | sed 's/^namespace\///' || true)
 
-    local namespaces
-    namespaces=$(su - "$k8s_user" -c "kubectl get namespaces -o name" 2>/tmp/kubectl_error.log | grep "$pattern" || true)
-    if [ -s /tmp/kubectl_error.log ]; then
-        echo "Error fetching namespaces with pattern '$pattern': $(cat /tmp/kubectl_error.log)"
-    fi
-    echo "DEBUG Namespaces matching pattern '$pattern': $namespaces"
-    if [ -z "$namespaces" ]; then
+    if [ -z "$matching_namespaces" ]; then
         echo "No namespaces found matching pattern: $pattern"
         return 0
     fi
     
-    echo "$namespaces" | while read -r namespace; do
-        namespace=$(echo "$namespace" | cut -d'/' -f2)
-        echo "DEBUG Processing namespace: $namespace"
-        if [[ $namespace == "default" ]]; then
-            # there should not be resources deployed in the defaul namespace so we intentially skip it
-            continue  
-        else
-            printf "Deleting all resources in namespace $namespace "
-            su - "$k8s_user" -c "kubectl delete all --all -n \"$namespace\"" >/tmp/kubectl_delete.log 2>&1
-            su - "$k8s_user" -c "kubectl delete ns \"$namespace\"" >>/tmp/kubectl_delete.log 2>&1
-            if [ $? -eq 0 ]; then
-                echo " [ok] "
-            else
-                echo "Error deleting resources in namespace $namespace."
-                echo "Error details: $(cat /tmp/kubectl_delete.log)"
-            fi
+    # Read the namespaces line by line
+    echo "$matching_namespaces" | while read -r namespace; do
+        if [ -z "$namespace" ]; then
+            continue # Skip empty lines
         fi
+        
+        # Explicitly skip 'default' to prevent accidental deletion of a core namespace
+        if [[ "$namespace" == "default" ]]; then
+            continue
+        fi
+
+        printf "Attempting to delete all resources and the namespace '$namespace'..."
+        
+        # Delete the namespace (this removes all resources within it)
+        if run_as_user "kubectl delete ns \"$namespace\""; then
+            echo " [ok]"
+        else
+            # run_as_user already logged the error, but we can log a summary here.
+            echo " [FAILED]"
+            echo "Failed to delete namespace $namespace. Check logs for details."
+            exit_code=1 # Set exit code to indicate failure in the loop
+        fi
+        
     done
+    
+    # Return the aggregated exit code
+    return $exit_code
 }
+
+# function deleteResourcesInNamespaceMatchingPattern() {
+#     local pattern="$1"  
+#     # Check if the pattern is provided
+#     if [ -z "$pattern" ]; then
+#         echo "Pattern not provided."
+#         return 1
+#     fi
+    
+#     # Get namespaces matching the pattern
+#     echo "DEBUG Fetching namespaces"
+#     full_pod_name=$(run_as_user "kubectl get pods -n \"$namespace\" --no-headers -o custom-columns=\":metadata.name\" | grep -i \"$pod_name\" | head -1")
+#     su - "$k8s_user" -c "kubectl get namespaces" #2>/tmp/kubectl_error.log
+#     if [ -s /tmp/kubectl_error.log ]; then
+#         echo "Error fetching namespaces: $(cat /tmp/kubectl_error.log)"
+#         return 1
+#     fi
+
+#     local namespaces
+#     namespaces=$(su - "$k8s_user" -c "kubectl get namespaces -o name" 2>/tmp/kubectl_error.log | grep "$pattern" || true)
+#     if [ -s /tmp/kubectl_error.log ]; then
+#         echo "Error fetching namespaces with pattern '$pattern': $(cat /tmp/kubectl_error.log)"
+#     fi
+#     echo "DEBUG Namespaces matching pattern '$pattern': $namespaces"
+#     if [ -z "$namespaces" ]; then
+#         echo "No namespaces found matching pattern: $pattern"
+#         return 0
+#     fi
+    
+#     echo "$namespaces" | while read -r namespace; do
+#         namespace=$(echo "$namespace" | cut -d'/' -f2)
+#         echo "DEBUG Processing namespace: $namespace"
+#         if [[ $namespace == "default" ]]; then
+#             # there should not be resources deployed in the defaul namespace so we intentially skip it
+#             continue  
+#         else
+#             printf "Deleting all resources in namespace $namespace "
+#             su - "$k8s_user" -c "kubectl delete all --all -n \"$namespace\"" >/tmp/kubectl_delete.log 2>&1
+#             su - "$k8s_user" -c "kubectl delete ns \"$namespace\"" >>/tmp/kubectl_delete.log 2>&1
+#             if [ $? -eq 0 ]; then
+#                 echo " [ok] "
+#             else
+#                 echo "Error deleting resources in namespace $namespace."
+#                 echo "Error details: $(cat /tmp/kubectl_delete.log)"
+#             fi
+#         fi
+#     done
+# }
 
 function deployHelmChartFromDir() {
   # Check if the chart directory exists
@@ -277,8 +333,6 @@ function deleteApps {
     deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
     deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
     deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-    rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
-    rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
     deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
     deleteResourcesInNamespaceMatchingPattern "default"
   else
@@ -294,15 +348,6 @@ function deleteApps {
           ;;
         "phee")
           deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-          # rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz
-          # rm -f $APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz
-          # echo "Handling Prometheus Operator resources in the default namespace as part of PHEE cleanup"
-          # LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
-          # su - "$k8s_user" -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl -n default delete -f -" > /dev/null 2>&1
-          # if [ $? -ne 0 ]; then
-          #   echo "Warning: there was an issue uninstalling  Prometheus Operator resources in default namespace."
-          #   echo "         You can ignore this if Prometheus was not expected to be already running."
-          # fi
           ;;
         "infra")
           deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"

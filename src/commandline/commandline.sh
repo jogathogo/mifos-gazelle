@@ -402,7 +402,10 @@ function main {
         deleteApps "$mifosx_instances" "$apps"
     elif [ "$mode" == "cleanall" ]; then
         envSetupMain "$mode"
-        deleteApps "$mifosx_instances" "all"
+        # envSetupMain will not remove remote cluster so need to run deleteApps
+        if [[ "$environment" == "remote" ]]; then
+            deleteApps "$mifosx_instances" "all"
+        fi
     else
         showUsage
         exit 1

@@ -36,23 +36,24 @@ function set_linux_os_distro {
     else
         LINUX_OS="Untested"
     fi
-    printf "\r==> Linux OS is [%s] " "$LINUX_OS"
+    #printf "\r     Linux OS is [%s] " "$LINUX_OS"
 }
 
-
 function check_os_ok {
-    printf "\r==> checking OS and kubernetes distro is tested with mifos-gazelle scripts\n"
+    printf "\r==> checking operating system is tested with mifos-gazelle\n"
     set_linux_os_distro
+    # Only Linux OS supported at this time
     if [[ ! $LINUX_OS == "Ubuntu" ]]; then
         printf "** Error, Mifos Gazelle is only tested with Ubuntu OS at this time   **\n"
         exit 1
     fi
-    echo "    Linux OS distro is $LINUX_OS version $LINUX_VERSION"
+    echo "    Linux OS is $LINUX_OS and version $LINUX_VERSION"
     echo "    Supported Ubuntu versions are: ${ubuntu_ok_versions_list[*]}"
     if [[ ! " ${ubuntu_ok_versions_list[*]} " =~ " ${LINUX_VERSION} " ]]; then
         printf "** Error, Mifos Gazelle is only tested with Ubuntu this time   **\n"
         exit 1
     fi
+    printf "    Operating system and versions checks            [ok]\n"
 }
 
 function verify_user {
@@ -97,23 +98,12 @@ function checkTools {
     return 0 # Return 0 (success) if all tools were found
 }
 
-function is_local_k8s_already_installed () {
+function is_local_cluster_installed () {
     if [[ -f /usr/local/bin/k3s ]]; then
-        echo "local Kubernetes Cluster (k3s) is installed."
+        #echo "local Kubernetes Cluster (k3s) is installed."
         return 0 # Success
     else
         return 1 # Failure
     fi
 }
-
-
-
-
-# function is_local_k8s_already_installed {
-#     if [[ -f "/usr/local/bin/k3s" ]]; then
-#         printf "==> k3s is already installed **\n"
-#         return 0
-#     fi
-#     return 1
-# }
 
