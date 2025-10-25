@@ -12,7 +12,6 @@ function cloneRepo() {
       echo "Usage: cloneRepo <branch> <repo_link> <target_directory> <cloned_directory_name>"
       return 1
   fi
-  
   local branch="$1"
   local repo_link="$2"
   local target_directory="$3"
@@ -59,10 +58,9 @@ function cloneRepo() {
 
 function deleteResourcesInNamespaceMatchingPattern() {
     local pattern="$1"
-    
     if [ -z "$pattern" ]; then
-        echo "Error: Pattern not provided."
-        return 1
+        echo "  ** Error: need to specify resources to remove  ."
+        exit 1 
     fi
         
     # Get all namespaces and filter them locally
@@ -75,7 +73,7 @@ function deleteResourcesInNamespaceMatchingPattern() {
     matching_namespaces=$(echo "$all_namespaces_output" | grep -E "$pattern" | sed 's/^namespace\///' || true)
 
     if [ -z "$matching_namespaces" ]; then
-        echo "No namespaces found matching pattern: $pattern"
+        printf "      namespaces %s not found    [skipping] \n"  $pattern
         return 0
     fi
     
@@ -176,7 +174,6 @@ function deployInfrastructure() {
       fi
   fi
 
-  echo "DEBUG Creating namespace $INFRA_NAMESPACE for infrastructure"
   createNamespace "$INFRA_NAMESPACE"
   check_command_execution $? "createNamespace $INFRA_NAMESPACE"
 
@@ -233,20 +230,20 @@ function applyKubeManifests() {
     done
 }
 
-function addKubeConfig() {
-  local K8sConfigDir="$k8s_user_home/.kube"
+# function addKubeConfig() {
+#   local K8sConfigDir="$k8s_user_home/.kube"
 
-  if [ ! -d "$K8sConfigDir" ]; then
-      run_as_user "mkdir -p $K8sConfigDir"
-      check_command_execution $? "mkdir -p $K8sConfigDir"
-      echo "K8sConfigDir created: $K8sConfigDir"
-  else
-      echo "K8sConfigDir already exists: $K8sConfigDir"
-  fi
+#   if [ ! -d "$K8sConfigDir" ]; then
+#       run_as_user "mkdir -p $K8sConfigDir"
+#       check_command_execution $? "mkdir -p $K8sConfigDir"
+#       echo "K8sConfigDir created: $K8sConfigDir"
+#   else
+#       echo "K8sConfigDir already exists: $K8sConfigDir"
+#   fi
   
-  run_as_user "cp $k8s_user_home/k3s.yaml $K8sConfigDir/config"
-  check_command_execution $? "cp $k8s_user_home/k3s.yaml $K8sConfigDir/config"
-}
+#   run_as_user "cp $k8s_user_home/k3s.yaml $K8sConfigDir/config"
+#   check_command_execution $? "cp $k8s_user_home/k3s.yaml $K8sConfigDir/config"
+# }
 
 function test_vnext() {
   echo "TODO" #TODO Write function to test apps
@@ -292,7 +289,8 @@ function deleteApps() {
   fi
 
   # Iterate over each application in the space-separated list
-  echo "Deleting specific applications: $appsToDelete"
+  printf "==> Delete specific applications: \n" 
+  #printf "      %s\n" "$appsToDelete"
   
   for app in $appsToDelete; do
     case "$app" in

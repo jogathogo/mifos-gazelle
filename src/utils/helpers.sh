@@ -32,7 +32,7 @@ run_as_user() {
 
 # Check if a command executed successfully
 function check_command_execution() {
-    echo "DEBUG: check_command_execution called with exit_code=$1, cmd=$2"
+    #echo "DEBUG: check_command_execution called with exit_code=$1, cmd=$2"
     local exit_code=$1
     local cmd="$2"
     if [[ $exit_code -ne 0 ]]; then
@@ -40,8 +40,8 @@ function check_command_execution() {
         logWithVerboseCheck "$debug" error "Failed to execute: $cmd"
         exit $exit_code
     fi
-    echo "  ** Error: Command execution failed: $cmd ** "
-    logWithVerboseCheck "$debug" debug "Successfully executed: $cmd"
+    #echo "  ** Error: Command execution failed: $cmd ** "
+    #logWithVerboseCheck "$debug" debug "Successfully executed: $cmd"
 }
 
 # Debug function to check if a function exists
