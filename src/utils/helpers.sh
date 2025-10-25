@@ -15,10 +15,10 @@ function check_sudo() {
 }
 
 # Run a command as the non-root k8s_user with KUBECONFIG set
-run_as_user() {
+run_as_user1() {
     local command="$1"
-    logWithVerboseCheck "$debug" debug "Running as $k8s_user: $command"
-    su - "$k8s_user" -c "export KUBECONFIG=$kubeconfig_path; $command"
+    #logWithVerboseCheck "$debug" debug "Running as $k8s_user: $command"
+    su - "$k8s_user" -c "export KUBECONFIG=$kubeconfig_path; $command" 
     return $exit_code
     # TODO tidy this up 
     #local exit_code=$?
@@ -28,6 +28,23 @@ run_as_user() {
     #     logWithVerboseCheck "$debug" error "Command failed: $command"
     #     #exit $exit_code
     # fi
+}
+
+function run_as_user() {
+    local command="$1"
+    # Debug: Log the command being executed
+    logWithVerboseCheck "$debug" debug "Running as $k8s_user: $command"
+    
+    # Execute the command as k8s_user and capture output and exit code
+    local output
+    output=$(su - "$k8s_user" -c "export KUBECONFIG=$kubeconfig_path; $command" 2>/dev/null)
+    local exit_code=$?
+    
+    # Output the command result for the caller to capture
+    echo "$output"
+    
+    # Return the actual exit code
+    return $exit_code
 }
 
 # Check if a command executed successfully

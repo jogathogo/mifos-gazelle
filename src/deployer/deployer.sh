@@ -7,55 +7,54 @@ source "$RUN_DIR/src/deployer/mifosx.sh" || { echo "FATAL: Could not source mifo
 source "$RUN_DIR/src/deployer/phee.sh"   || { echo "FATAL: Could not source phee.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }  
 source "$RUN_DIR/src/utils/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 
+#------------------------------------------------------------
+# Description : Clones/updates a Git repo. Reclones only if repo or branch missing.
+# Usage : cloneRepo <branch> <repo_link> <target_dir> <dir_name>
+# Example: cloneRepo main link target-dir repo-name
+#------------------------------------------------------------
 function cloneRepo() {
   if [ "$#" -ne 4 ]; then
-      echo "Usage: cloneRepo <branch> <repo_link> <target_directory> <cloned_directory_name>"
-      return 1
+    echo "Usage: cloneRepo <branch> <repo_link> <target_directory> <cloned_directory_name>"
+    return 1
   fi
+
   local branch="$1"
   local repo_link="$2"
   local target_directory="$3"
   local cloned_directory_name="$4"
   local repo_path="$target_directory/$cloned_directory_name"
 
-  # Ensure target directory exists with correct ownership
-  if [ ! -d "$target_directory" ]; then
-      mkdir -p "$target_directory"
-      chown -R "$k8s_user" "$target_directory"
+  # Create target directory if it doesn't exist
+  mkdir -p "$target_directory"
+
+  # Check if repository and branch exist
+  if [ -d "$repo_path" ]; then
+    cd "$repo_path" || return 1
+    # Check if specified branch exists locally
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+      echo "Repository $repo_path with branch $branch is up-to-date."
+      return 0
+    fi
+    # Remove repo if branch doesn't exist
+    echo "Branch $branch not found in $repo_path. Recloning..."
+    rm -rf "$repo_path"
   fi
 
-  # Check if the repository already exists
-  if [ -d "$repo_path" ]; then
-    cd "$repo_path" || exit
-
-    # Fetch the latest changes
-    run_as_user "git fetch origin $branch" >> /dev/null 2>&1
-    check_command_execution $? "git fetch origin $branch"
-
-    # Compare local branch with remote branch
-    local LOCAL REMOTE
-    LOCAL=$(run_as_user "cd $repo_path && git rev-parse @")
-    check_command_execution $? "git rev-parse @"
-    
-    REMOTE=$(run_as_user "cd $repo_path && git rev-parse @{u}")
-    check_command_execution $? "git rev-parse @{u}"
-
-    if [ "$LOCAL" != "$REMOTE" ]; then
-        echo -e "${YELLOW}Repository $repo_path has updates. Recloning...${RESET}"
-        rm -rf "$repo_path"
-        run_as_user "git clone -b $branch $repo_link $repo_path" >> /dev/null 2>&1
-        check_command_execution $? "git clone -b $branch $repo_link $repo_path"
-    else
-        echo "    Repository $repo_path is up-to-date. No need to reclone."
-    fi
+  # Clone the repository
+  git clone -b "$branch" "$repo_link" "$repo_path" >/dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "Repository $repo_path cloned successfully."
   else
-    # Clone the repository if it doesn't exist locally
-    run_as_user "git clone -b $branch $repo_link $repo_path" >> /dev/null 2>&1
-    check_command_execution $? "git clone -b $branch $repo_link $repo_path"
-    echo "    Repository $repo_path cloned successfully."
+    echo "Failed to clone $repo_link to $repo_path."
+    return 1
   fi
 }
 
+#------------------------------------------------------------
+# Description : Deletes K8s namespaces matching a regex pattern.
+# Usage : deleteResourcesInNamespaceMatchingPattern <regex_pattern>
+# Example: deleteResourcesInNamespaceMatchingPattern "app-.*"
+#------------------------------------------------------------
 function deleteResourcesInNamespaceMatchingPattern() {
     local pattern="$1"
     if [ -z "$pattern" ]; then
@@ -85,10 +84,10 @@ function deleteResourcesInNamespaceMatchingPattern() {
             continue
         fi
 
-        printf "Attempting to delete all resources and the namespace '$namespace'..."
+        #FRED printf "Delete all resources and the namespace %s" $namespace
         
         # Delete the namespace (this removes all resources within it)
-        if run_as_user "kubectl delete ns \"$namespace\""; then
+        if run_as_user "kubectl delete ns \"$namespace\"" >> /dev/null 2>&1 ; then
             echo " [ok]"
         else
             echo " [FAILED]"
@@ -100,6 +99,11 @@ function deleteResourcesInNamespaceMatchingPattern() {
     return $exit_code
 }
 
+#------------------------------------------------------------
+# Description : Deploys a Helm chart from a local dir to a K8s NS.
+# Usage : deployHelmChartFromDir <dir> <ns> <release> [values_file]
+# Example: deployHelmChartFromDir ./chart infra infra-rls values.yaml
+#------------------------------------------------------------
 function deployHelmChartFromDir() {
   if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
     echo "Usage: deployHelmChartFromDir <chart_dir> <namespace> <release_name> [values_file]"
@@ -118,22 +122,18 @@ function deployHelmChartFromDir() {
 
   # Build helm install command
   local helm_cmd="helm install --wait --timeout 600s $release_name $chart_dir -n $namespace"
-  
   if [ -n "$values_file" ]; then
-      echo "Installing Helm chart using values: $values_file..."
       helm_cmd="$helm_cmd -f $values_file"
-  else
-      echo "Installing Helm chart using default values file..."
   fi
 
-  run_as_user "$helm_cmd"
+  run_as_user "$helm_cmd" > /dev/null 2>&1
   check_command_execution $? "$helm_cmd"
 
   # Verify deployment
-  local resource_count
-  resource_count=$(run_as_user "kubectl get pods -n \"$namespace\" --ignore-not-found=true 2>/dev/null | grep -v 'No resources found' | wc -l")
+  # local resource_count
+  # resource_count=$(run_as_user "kubectl get pods -n \"$namespace\" --ignore-not-found=true 2>/dev/null | grep -v 'No resources found' | wc -l")
   
-  if [ "$resource_count" -gt 0 ]; then
+  if is_app_running $namespace; then
     echo "Helm chart deployed successfully."
     return 0
   else
@@ -142,46 +142,63 @@ function deployHelmChartFromDir() {
   fi
 }
 
+#------------------------------------------------------------
+# Description : Creates a K8s namespace if it doesn't exist.
+# Usage : createNamespace <namespace>
+# Example: createNamespace mifosx-ns
+#------------------------------------------------------------
 function createNamespace() {
   local namespace=$1
   
-  printf "    Creating namespace $namespace "
+  #printf "    Creating namespace $namespace "
   # Check if the namespace already exists
-  if run_as_user "kubectl get namespace \"$namespace\"" ; then
-      echo -e "${BLUE}Namespace $namespace already exists - skipping creation.${RESET}"
-  else
+  if ! run_as_user "kubectl get namespace \"$namespace\"" >> /dev/null 2>&1; then
     # Create the namespace
     run_as_user "kubectl create namespace \"$namespace\"" >> /dev/null 2>&1
-    check_command_execution
+    check_command_execution $? "kubectl create namespace $namespace"
+    #printf " [ok] "
   fi
-  printf " [ok] "
 }
 
+#------------------------------------------------------------
+# Description : Deploys infrastructure chart via Helm.
+# Usage : deployInfrastructure [redeploy_bool]
+# Example: deployInfrastructure true
+#------------------------------------------------------------
 function deployInfrastructure() {
   local redeploy="${1:-false}"
 
   printf "==> Deploying infrastructure \n"
   
-  local result
-  result=$(isDeployed "infra" "$INFRA_NAMESPACE" "mysql-0")
+  # local result
+  # result=$(isDeployed "$INFRA_NAMESPACE" 9 )
   
-  if [[ "$result" == "true" ]]; then
-      if [[ "$redeploy" == "false" ]]; then
-          echo "    Infrastructure is already deployed. Skipping deployment."
-          return 0
-      else
-          deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
-      fi
+  if is_app_running  "$INFRA_NAMESPACE"; then
+    if [[ "$redeploy" == "false" ]]; then
+        echo "    Infrastructure is already deployed. Skipping deployment."
+        return 0
+    else
+        deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
+    fi
   fi
+
+  # if [[ "$result" == "true" ]]; then
+  #     if [[ "$redeploy" == "false" ]]; then
+  #         echo "    Infrastructure is already deployed. Skipping deployment."
+  #         return 0
+  #     else
+  #         deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
+  #     fi
+  # fi
 
   createNamespace "$INFRA_NAMESPACE"
   check_command_execution $? "createNamespace $INFRA_NAMESPACE"
 
   # Update helm dependencies for infra chart
-  printf "    Updating dependencies for infra helm chart "
+  #printf "    Updating dependencies for infra helm chart "
   run_as_user "cd $INFRA_CHART_DIR && helm dep update" >> /dev/null 2>&1
   check_command_execution $? "helm dep update for infra chart"
-  echo " [ok] "
+  #echo " [ok] "
 
   # Deploy infra helm chart
   printf "    Deploying infra helm chart  "
@@ -199,6 +216,11 @@ function deployInfrastructure() {
   echo -e "============================${RESET}\n"
 }
 
+#------------------------------------------------------------
+# Description : Applies K8s YAML manifests from a directory.
+# Usage : applyKubeManifests <directory> <namespace>
+# Example: applyKubeManifests ./k8s-files mifosx-ns
+#------------------------------------------------------------
 function applyKubeManifests() {
     if [ "$#" -ne 2 ]; then
         echo "Usage: applyKubeManifests <directory> <namespace>"
@@ -245,19 +267,39 @@ function applyKubeManifests() {
 #   check_command_execution $? "cp $k8s_user_home/k3s.yaml $K8sConfigDir/config"
 # }
 
+#------------------------------------------------------------
+# Description : Placeholder for vNext application testing logic.
+# Usage : test_vnext
+# Example: test_vnext
+#------------------------------------------------------------
 function test_vnext() {
   echo "TODO" #TODO Write function to test apps
 }
 
+#------------------------------------------------------------
+# Description : Placeholder for Phee application testing logic.
+# Usage : test_phee
+# Example: test_phee
+#------------------------------------------------------------
 function test_phee() {
   echo "TODO"
 }
 
+#------------------------------------------------------------
+# Description : Placeholder for MifosX application testing logic.
+# Usage : test_mifosx <instance_name>
+# Example: test_mifosx default
+#------------------------------------------------------------
 function test_mifosx() {
   local instance_name=$1
   # TODO: Implement testing logic
 }
 
+#------------------------------------------------------------
+# Description : Prints final deployment status and access info.
+# Usage : printEndMessage
+# Example: printEndMessage
+#------------------------------------------------------------
 function printEndMessage() {
   cat << EOF
 
@@ -275,6 +317,11 @@ or install k9s by executing ./src/utils/install-k9s.sh in this terminal window
 EOF
 }
 
+#------------------------------------------------------------
+# Description : Deletes all or specific applications by namespace.
+# Usage : deleteApps <ignored> <"app1 app2"|all>
+# Example: deleteApps _ "mifosx vnext"
+#------------------------------------------------------------
 function deleteApps() {
   local appsToDelete="$2"
 
@@ -315,11 +362,16 @@ function deleteApps() {
   done
 }
 
+#------------------------------------------------------------
+# Description : Orchestrates deployment of apps (infra, vnext, etc.).
+# Usage : deployApps <ignored> <"app1 app2"|all> [redeploy]
+# Example: deployApps _ "vnext mifosx" true
+#------------------------------------------------------------
 function deployApps() {
   local appsToDeploy="$2"
   local redeploy="${3:-false}"
   
-  echo "Redeploy mode: $redeploy"
+  #echo "Redeploy mode: $redeploy"
   echo -e "${BLUE}Starting deployment for applications: $appsToDeploy...${RESET}"
 
   # Special handling for 'all' as a block-deploy
@@ -334,7 +386,7 @@ function deployApps() {
   else
     # Process each application in the space-separated list
     for app in $appsToDeploy; do
-      echo -e "${BLUE}--- Deploying '$app' ---${RESET}"
+      #echo -e "${BLUE}--- Deploying '$app' ---${RESET}"
       
       case "$app" in
         "infra")
@@ -364,7 +416,7 @@ function deployApps() {
           ;;
       esac
       
-      echo -e "${BLUE}--- Finished deploying '$app' ---${RESET}\n"
+      #echo -e "${BLUE}--- Finished deploying '$app' ---${RESET}\n"
     done
   fi
 

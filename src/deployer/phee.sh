@@ -4,20 +4,21 @@
 function deployPH(){
   # TODO make this a global variable
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
-  result=$(isDeployed "phee" "$PHEE_NAMESPACE" "ph-ee-connector-mojaloop-java" )
-  if [[ "$result" == "true" ]]; then
+  echo "DEBUG-TOM Checking if $PH_RELEASE_NAME is already deployed in namespace $PH_NAMESPACE"
+  if is_app_running "$PH_NAMESPACE"; then
+    echo "DENBUG-TOM2 apparently it things app is running"
     if [[ "$redeploy" == "false" ]]; then
       echo "$PH_RELEASE_NAME is already deployed. Skipping deployment."
-      return
+      return 0
     else # need to delete prior to redeploy 
       deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
       #deleteResourcesInNamespaceMatchingPattern "default"  #just removes prometheus at the moment and so is probably not needed
       manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
-      rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
-      rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
+      # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
+      # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
     fi
   fi 
-  echo "Deploying PaymentHub EE"
+  echo "==> Deploying PaymentHub EE"
   createNamespace "$PH_NAMESPACE"
   #checkPHEEDependencies
   preparePaymentHubChart

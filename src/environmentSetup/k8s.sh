@@ -44,6 +44,7 @@ function install_k3s {
     fred="$(dirname "$kubeconfig_path")"
     echo "DEBUG: dirname kubeconfig_path is $fred"
     mkdir -p "$(dirname "$kubeconfig_path")"
+    chown "$k8s_user" "$(dirname "$kubeconfig_path")"
 
     ls -las $kubeconfig_path
     cp /etc/rancher/k3s/k3s.yaml "$kubeconfig_path"

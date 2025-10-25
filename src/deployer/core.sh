@@ -27,18 +27,94 @@ isPodRunning() {
 
 isDeployed() {
     local app_name="$1" namespace="$2" pod_name="$3" full_pod_name
-    kubectl get namespace "$namespace" >/dev/null 2>&1 || { echo "false"; return; }
+
+    # Check if namespace exists
+    run_as_user "kubectl get namespace \"$namespace\" "  || return 1
+
+    # Get the full pod name
     full_pod_name=$(run_as_user "kubectl get pods -n \"$namespace\" --no-headers -o custom-columns=\":metadata.name\" | grep -i \"$pod_name\" | head -1")
-    if [[ -z "$full_pod_name" ]]; then
-        echo "false"
-        return
-    fi
+
+    # If no pod found, return false
+    [[ -z "$full_pod_name" ]] && return 1
+
+    # Check if the pod is running
     if isPodRunning "$full_pod_name" "$namespace"; then
-        echo "true"
+        return 0
     else
-        echo "false"
+        return 1
     fi
 }
+#------------------------------------------------------
+# Description: Check if the application is deployed by 
+# verifying the number of running pods in a namespace
+#------------------------------------------------------
+function is_app_running() {
+    local namespace="$1"
+    local min_pods=2
+    
+    # Validate inputs
+    [[ -z "$namespace" ]] && {
+        logWithVerboseCheck "$debug" error "Namespace missing: namespace=$namespace"
+        return 1
+    }
+    
+    # Debug: Print namespace and minimum pods
+    logWithVerboseCheck "$debug" debug "Checking for at least $min_pods pods, all Running, in namespace $namespace"
+    
+    # Check if namespace exists
+    local namespace_check
+    namespace_check=$(run_as_user "kubectl get namespace \"$namespace\" -o name")
+    local namespace_exit_code=$?
+    logWithVerboseCheck "$debug" debug "Namespace check exit code: $namespace_exit_code, output: [$namespace_check]"
+    [[ $namespace_exit_code -ne 0 ]] && {
+        logWithVerboseCheck "$debug" error "Namespace $namespace does not exist or is inaccessible"
+        return 1
+    }
+    
+    # Get all pods
+    local pod_list total_pods running_count
+    pod_list=$(run_as_user "kubectl get pod -n \"$namespace\" --no-headers -o wide")
+    local exit_code=$?
+    
+    # Count total pods and running pods
+    total_pods=$(echo "$pod_list" | grep -c '^')
+    running_count=$(echo "$pod_list" | grep -c '[[:space:]]Running[[:space:]]')
+    
+    # Debug: Print kubectl exit code, pod list, total pods, and running count
+    logWithVerboseCheck "$debug" debug "kubectl exit code: $exit_code, pod list: [$pod_list], total pods: $total_pods, running pods: $running_count"
+    
+    # Check if command failed
+    [[ $exit_code -ne 0 ]] && {
+        logWithVerboseCheck "$debug" error "Failed to retrieve pods in namespace $namespace"
+        return 1
+    }
+    
+    # Check if there are enough pods and all are Running
+    if [[ $total_pods -ge $min_pods && $total_pods -eq $running_count ]]; then
+        logWithVerboseCheck "$debug" debug "Found $total_pods pods, all Running, in namespace $namespace, meeting minimum of $min_pods"
+        return 0
+    else
+        logWithVerboseCheck "$debug" debug "Check failed: $total_pods pods, $running_count Running, in namespace $namespace (requires at least $min_pods pods, all Running)"
+        return 1
+    fi
+} # end of is_app_running 
+
+
+
+# isDeployed_old() {
+#     local app_name="$1" namespace="$2" pod_name="$3" full_pod_name
+#     kubectl get namespace "$namespace" >/dev/null 2>&1 || { echo "false"; return; }
+#     full_pod_name=$(run_as_user "kubectl get pods -n \"$namespace\" --no-headers -o custom-columns=\":metadata.name\" | grep -i \"$pod_name\" | head -1")
+#     if [[ -z "$full_pod_name" ]]; then
+#         echo "false"
+#         return
+#     fi
+#     if isPodRunning "$full_pod_name" "$namespace"; then
+#         echo "true"
+#     else
+#         echo "false"
+#     fi
+# }
 
 waitForPodReadyByPartialName() {
   local namespace="$1"
@@ -101,7 +177,8 @@ EOF
     openssl x509 -in "$key_dir/$domain_name.crt" -noout -text > /dev/null 2>&1 
 
     # Create the Kubernetes TLS secret
-    kubectl create secret tls "$secret_name" --cert="$key_dir/$domain_name.crt" --key="$key_dir/$domain_name.key" -n "$namespace" > /dev/null 2>&1 
+    #kubectl create secret tls "$secret_name" --cert="$key_dir/$domain_name.crt" --key="$key_dir/$domain_name.key" -n "$namespace" > /dev/null 2>&1 
+    #run_as_user "kubectl create secret tls \"$secret_name\" --cert=\"$key_dir/$domain_name.crt\" --key=\"$key_dir/$domain_name.key\" -n \"$namespace\""
 
     if [ $? -eq 0 ]; then
       echo "    Self-signed certificate and secret $secret_name created successfully in namespace $namespace "
