@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # environmentSetup.sh -- Mifos Gazelle environment setup script
 
-#source "$RUN_DIR/src/utils/logger.sh" || { echo "FATAL: Could not source logger.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
-#source "$RUN_DIR/src/utils/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/environmentSetup/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/environmentSetup/k8s.sh" || { echo "FATAL: Could not source k8s.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 
@@ -42,7 +40,7 @@ function install_os_prerequisites {
 
 function add_hosts {
     if [[ "$environment" == "local" ]]; then
-        printf "==> Mifos-gazelle: update hosts file for local environment\n"
+        printf "==> Mifos-gazelle: update local hosts file  "
         VNEXTHOSTS=( mongohost.mifos.gazelle.test mongo-express.mifos.gazelle.test \
                      vnextadmin.mifos.gazelle.test kafkaconsole.mifos.gazelle.test elasticsearch.mifos.gazelle.test redpanda-console.mifos.gazelle.test \
                      fspiop.mifos.gazelle.test bluebank.mifos.gazelle.test greenbank.mifos.gazelle.test \
@@ -62,57 +60,15 @@ function add_hosts {
     else
         printf "==> Skipping /etc/hosts modification for remote environment. Ensure DNS is configured for Mifos Gazelle services.\n"
     fi
+    printf "        [ok]\n"
 }
-
-# TODO remove if not needed
-# function print_current_k8s_releases {
-#     printf "          Current Kubernetes releases are: "
-#     for i in "${K8S_CURRENT_RELEASE_LIST[@]}"; do
-#         printf " [v%s]" "$i"
-#     done
-#     printf "\n"
-# }
-
-# function install_k8s_local_cluster {
-#     local cluster_type=$1
-#     # if [[ ! -f "$kubeconfig_path" && "$cluster_type" == "remote" ]]; then
-#     #     printf "** Error: kubeconfig file at %s does not exist for remote cluster **\n" "$kubeconfig_path"
-#     #     exit 1
-#     # fi
-#     if [[ "$cluster_type" == "remote" ]]; then
-#         # if ! command -v kubectl &>/dev/null; then
-#         #     install_kubectl
-#         # fi
-#         export KUBECONFIG="$kubeconfig_path"
-#         logWithVerboseCheck "$debug" debug "Using kubeconfig: $KUBECONFIG for remote cluster"
-#         printf "Verifying connection to the remote Kubernetes cluster...\n"
-#         echo "k8s_user is $k8s_user"
-#         #export KUBECONFIG="/home/ubuntu/.kube/config"
-#         su - "$k8s_user" -c "echo $KUBECONFIG; kubectl get nodes"
-#         #su - "$k8s_user" -c "kubectl --kubeconfig=$KUBECONFIG get nodes"
-
-#         if [[ $? -eq 0 ]]; then
-#             printf "Successfully connected to the remote Kubernetes cluster.\n"
-#             report_cluster_info
-#         else
-#             printf "** Error: Failed to connect to the remote Kubernetes cluster. Ensure the kubeconfig file at %s is valid and the cluster is accessible.\n" "$kubeconfig_path"
-#             exit 1
-#         fi
-#     elif [[ "$cluster_type" == "local" ]]; then
-#         do_k3s_install
-#     else
-#         printf "Invalid choice. Defaulting to local\n"
-#         cluster_type="local"
-#         do_k3s_install
-#     fi
-# }
 
 function delete_k8s_local_cluster {
     printf "    removing local kubernetes cluster   "
     rm -f /usr/local/bin/helm >> /dev/null 2>&1
     /usr/local/bin/k3s-uninstall.sh >> /dev/null 2>&1
     if [[ $? -eq 0 ]]; then
-        printf " [ ok ] \n"
+        printf "            [ ok ] \n"
     else
         echo -e "\n==> k3s not installed"
     fi
@@ -126,18 +82,83 @@ function print_end_message {
     echo -e "============================${RESET}\n"
 }
 
-function print_end_message_tear_down {
-    echo -e "\n\n=================================================="
-    echo -e "Thank you for using Mifos-gazelle cleanup successful"
+function print_end_message_delete {
+    echo -e "\n==================================================="
+    echo -e "Thank you for using Mifos Gazelle cleanup successful"
     echo -e "======================================================\n\n"
     echo -e "Copyright © 2023 The Mifos Initiative"
 }
 
+# function configure_k8s_user_env() {
+#     local start_marker="# GAZELLE_START start of config added by mifos-gazelle #"
+#     local end_marker="# GAZELLE_END end of config added by mifos-gazelle #"
+#     local bashrc="$k8s_user_home/.bashrc"
+#     local bash_profile="$k8s_user_home/.bash_profile"
+    
+#     # Ensure files exist and have correct ownership
+#     for file in "$bashrc" "$bash_profile"; do
+#         if [ ! -f "$file" ]; then
+#             touch "$file"
+#         fi
+#         chown "$k8s_user":"$k8s_user" "$file"
+#     done
+
+#     # Check if configuration already exists
+#     if grep -q "$start_marker" "$bashrc" 2>/dev/null; then
+#         printf "==> Kubernetes configuration for .bashrc for user %s already exists - skipping\n" "$k8s_user"
+        
+#         # Still ensure KUBECONFIG is set correctly in existing config
+#         if ! grep -q "export KUBECONFIG=$kubeconfig_path" "$bashrc" 2>/dev/null; then
+#             echo "    Updating KUBECONFIG path in existing configuration..."
+#             # Remove old KUBECONFIG line between markers and add new one
+#             perl -i -pe "s|^export KUBECONFIG=.*|export KUBECONFIG=$kubeconfig_path| if /$start_marker/ .. /$end_marker/" "$bashrc"
+#         fi
+#         return 0
+#     fi
+#     printf "==> Adding kubernetes configuration for %s .bashrc\n" "$k8s_user"
+    
+#     # Add configuration to .bashrc
+#     cat >> "$bashrc" << EOF
+# $start_marker
+# source <(kubectl completion bash)
+# alias k=kubectl
+# complete -F __start_kubectl k
+# alias ksetns="kubectl config set-context --current --namespace"
+# alias ksetuser="kubectl config set-context --current --user"
+# alias cdg="cd $k8s_user_home/mifos-gazelle"
+# export PATH=\$PATH:/usr/local/bin
+# export KUBECONFIG=$kubeconfig_path
+# $end_marker
+# EOF
+
+#     # Configure .bash_profile to source .bashrc and set KUBECONFIG
+#     # Remove any existing GAZELLE configuration first
+#     perl -i -ne "print unless /$start_marker/ .. /$end_marker/" "$bash_profile" 2>/dev/null || true
+    
+#     # Add clean configuration to .bash_profile
+#     cat >> "$bash_profile" << EOF
+# $start_marker
+# # Source bashrc to get all configurations
+# if [ -f ~/.bashrc ]; then
+#     source ~/.bashrc
+# fi
+# export KUBECONFIG=$kubeconfig_path
+# $end_marker
+# EOF
+
+#     # Ensure correct ownership
+#     chown "$k8s_user":"$k8s_user" "$bashrc" "$bash_profile"
+    
+#     printf "    Kubernetes configuration added successfully\n"
+# }
+
 function configure_k8s_user_env {
     start_message="# GAZELLE_START start of config added by mifos-gazelle #"
+    end_message="#GAZELLE_END end of config added by mifos-gazelle #"
+    # config .bashrc for k8s_user
     grep "start of config added by mifos-gazelle" "$k8s_user_home/.bashrc" >/dev/null 2>&1
     if [[ $? -ne 0 ]]; then
-        printf "==> Adding kubernetes configuration for %s .bashrc\n" "$k8s_user"
+        printf "==> Configure users .bashrc for kubernetes " 
         printf "%s\n" "$start_message" >> "$k8s_user_home/.bashrc"
         echo "source <(kubectl completion bash)" >> "$k8s_user_home/.bashrc"
         echo "alias k=kubectl " >> "$k8s_user_home/.bashrc"
@@ -147,12 +168,18 @@ function configure_k8s_user_env {
         echo "alias cdg=\"cd $k8s_user_home/mifos-gazelle\" " >> "$k8s_user_home/.bashrc"
         echo "export PATH=\$PATH:/usr/local/bin" >> "$k8s_user_home/.bashrc"
         echo "export KUBECONFIG=$kubeconfig_path" >> "$k8s_user_home/.bashrc"
-        printf "#GAZELLE_END end of config added by mifos-gazelle #\n" >> "$k8s_user_home/.bashrc"
-        perl -p -i.bak -e 's/^.*KUBECONFIG.*$//g' "$k8s_user_home/.bash_profile"
-        echo "source .bashrc" >> "$k8s_user_home/.bash_profile"
+        printf "%s\n" "$end_message" >> "$k8s_user_home/.bashrc"
+
+        # config .bash_profile for k8s_user
+        perl -p -i.bak -e 's/^.*KUBECONFIG.*\n?//g' "$k8s_user_home/.bash_profile"
+        perl -p -i.bak -e 's/^.*bashrc.*\n?//g' "$k8s_user_home/.bash_profile"
+        echo "source ~/.bashrc" >> "$k8s_user_home/.bash_profile"
         echo "export KUBECONFIG=$kubeconfig_path" >> "$k8s_user_home/.bash_profile"
+
+        chown "$k8s_user":"$k8s_user" "$k8s_user_home/.bashrc" "$k8s_user_home/.bash_profile"
+        printf "         [ok]\n"
     else
-        printf "\r==> Kubernetes configuration for .bashrc for user %s already exists ..skipping\n" "$k8s_user"
+        printf "\r==> user's .bashrc already configured for k8s      [skipping]\n"
     fi
 }
 
@@ -196,19 +223,20 @@ is_cluster_accessible() {
 
 function envSetupLocalCluster {
     local mode="$1"
+    # install_k3s
+
 
     if [[ "$mode" == "deploy" ]]; then
         check_resources_ok
         install_os_prerequisites
         if ! is_local_cluster_installed; then
             add_hosts
-            #install_k8s_local_cluster "$environment"
             install_k3s
-            install_nginx
-            add_helm_repos
+            check_and_load_helm_repos
+            install_nginx_local_cluster
             $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
         fi
-        printf "\r==> kubernetes k3s version:[%s] now configured for user [%s] and ready \n" \
+        printf "\r==> kubernetes k3s v%s configured for [%s]\n" \
                   "$k8s_version" "$k8s_user"
         print_end_message
     elif [[ "$mode" == "cleanapps" ]]; then
@@ -221,15 +249,14 @@ function envSetupLocalCluster {
             exit 1
         fi
     elif [[ "$mode" == "cleanall" ]]; then
-        printf "\n==> Deleting local kubernetes cluster...  \n"
+        #printf "\n==> Deleting local kubernetes cluster...  \n"
         if ! is_local_cluster_installed; then
             printf "    Local kubernetes cluster is NOT installed   \n"
             printf "    Nothing to delete. Exiting.\n\n"
             exit 1
         fi
         delete_k8s_local_cluster
-        echo "Local Kubernetes cluster deleted"
-        print_end_message_tear_down
+        print_end_message_delete
     else
         showUsage
         exit 1

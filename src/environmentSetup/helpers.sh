@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # helper functions for OS and kubernetes environment setup
 
-# function run_as_user { 
-#     su - "$k8s_user" -c "export KUBECONFIG=$kubeconfig_path; $1"; 
-# }
-
 function check_arch_ok {
     local arch=$(uname -m)
     if [[ "$arch" != "x86_64" && "$arch" != "arm64" && "$arch" != "aarch64" ]]; then

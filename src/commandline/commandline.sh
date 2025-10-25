@@ -5,7 +5,6 @@ source "$RUN_DIR/src/utils/helpers.sh" || { echo "FATAL: Could not source helper
 source "$RUN_DIR/src/configurationManager/config.sh" || { echo "FATAL: Could not source config.sh. Check RUN_DIR: $RUN_DIR"; exit 1; } 
 source "$RUN_DIR/src/environmentSetup/environmentSetup.sh" || { echo "FATAL: Could not source environmentSetup.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/deployer/deployer.sh" || { echo "FATAL: Could not source deployer.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
-echo "DEBUG4"
 
 DEFAULT_CONFIG_FILE="$RUN_DIR/config/config.ini"
 
@@ -46,8 +45,6 @@ function install_crudini() {
     fi
 }
 
-
-
 # Function to load configuration from the INI file using crudini
 function loadConfigFromFile() {
     local config_path="$1"
@@ -65,8 +62,6 @@ function loadConfigFromFile() {
     if [[ -n "$config_gazelle_domain" ]]; then GAZELLE_DOMAIN="$config_gazelle_domain"; fi
     local config_gazelle_version=$(crudini --get "$config_path" general GAZELLE_VERSION 2>/dev/null)
     if [[ -n "$config_gazelle_version" ]]; then GAZELLE_VERSION="$config_gazelle_version"; fi
-
-    echo "DEBUG5 gazelle_version is $GAZELLE_VERSION"
 
     # Read [kubernetes] section
     local config_environment=$(crudini --get "$config_path" kubernetes environment 2>/dev/null)
@@ -354,6 +349,7 @@ kubeconfig_path=""
 # min_free_space=30
 # linux_os_list="Ubuntu"
 #ubuntu_ok_versions_list=""
+export KUBECONFIG=$kubeconfig_path
 CONFIG_FILE_PATH="$DEFAULT_CONFIG_FILE"
 
 function main {

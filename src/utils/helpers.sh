@@ -19,21 +19,28 @@ run_as_user() {
     local command="$1"
     logWithVerboseCheck "$debug" debug "Running as $k8s_user: $command"
     su - "$k8s_user" -c "export KUBECONFIG=$kubeconfig_path; $command"
-    local exit_code=$?
-    if [[ $exit_code -ne 0 ]]; then
-        logWithVerboseCheck "$debug" error "Command failed: $command"
-        exit $exit_code
-    fi
+    return $exit_code
+    # TODO tidy this up 
+    #local exit_code=$?
+
+    # if [[ $exit_code -ne 0 ]]; then
+    #     #printf "  ** Error: Command failed when running as user %s: %s ** \n" "$k8s_user" "$command"
+    #     logWithVerboseCheck "$debug" error "Command failed: $command"
+    #     #exit $exit_code
+    # fi
 }
 
 # Check if a command executed successfully
-check_command_execution() {
+function check_command_execution() {
+    echo "DEBUG: check_command_execution called with exit_code=$1, cmd=$2"
     local exit_code=$1
     local cmd="$2"
     if [[ $exit_code -ne 0 ]]; then
+        echo "  ** Error: Command execution failed: $cmd ** "
         logWithVerboseCheck "$debug" error "Failed to execute: $cmd"
         exit $exit_code
     fi
+    echo "  ** Error: Command execution failed: $cmd ** "
     logWithVerboseCheck "$debug" debug "Successfully executed: $cmd"
 }
 

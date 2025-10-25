@@ -1,36 +1,59 @@
 #!/usr/bin/env bash
 # kubernetes specific functions 
 
+# Checks K3s status and returns 0 for 'pass' or 1 for failure.
+# based on k3s check-config output parsing and removing ANSI escape codes if any
+# note this isn't used for k3s cluster health checking just installation verification
+function check_k3s_cluster_status {
+    status=$(
+        k3s check-config 2>/dev/null | 
+        perl -ne 's/\e\[[0-9;]*m//g; if (/STATUS: (pass|fail)/) { print "$1\n" }' | 
+        tr -d '[:space:]'
+    )
+    if [[ "$status" == "pass" ]]; then
+        return 0 # Success
+    else
+        return 1 # Failure
+    fi
+}
+
 function install_k3s {
-    printf "========================================================================================\n"
-    printf "Mifos Gazelle local cluster installation \n"
-    printf "========================================================================================\n"
     # TODO check this i.e. do we need to remove old kube config like this 
     rm -rf "$k8s_user_home/.kube" >> /dev/null 2>&1
-    printf "\r==> installing k3s "
-    echo "k8s_version is $k8s_version"
+    printf "\r==> install local k3s cluster v%s user [%s]    " "$k8s_version" "$k8s_user"
     curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" \
                             INSTALL_K3S_CHANNEL="v$k8s_version" \
                             INSTALL_K3S_EXEC=" --disable traefik " sh > /dev/null 2>&1
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    k3s check-config
-    status=`k3s check-config 2> /dev/null | grep "^STATUS" | awk '{print $2}' `
-    if [[ "$status" != "pass" ]]; then
-        printf "** Error: k3s check-config not reporting status of pass   ** \n"
-        printf "   run k3s check-config manually as user [%s] for more information   ** \n" "$k8s_user"
+
+    if ! check_k3s_cluster_status ; then
+        printf "[fail]\n"
+        printf "    ** Error: k3s check-config not reporting status of pass ** \n"
+        printf "    ** run sudo k3s check-config manually as user [%s] for more information   ** \n" "$k8s_user"
         exit 1
     fi
-    printf "[ok]\n"
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    sudo chown "$k8s_user" "$KUBECONFIG"
+
+    # echo "\nk8s_user_home is $k8s_user_home"
+    # echo "export KUBECONFIG=$kubeconfig_path" >> "$k8s_user_home/.bashrc"
+    # echo "export KUBECONFIG=$kubeconfig_path" >> "$k8s_user_home/.bash_profile"
+    #export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    #sudo chown "$k8s_user" "$KUBECONFIG"
+    echo "DEBUG: KUBECONFIG is $KUBECONFIG"
+    echo "DEBUG: kubeconfig_path is $kubeconfig_path"
+    rm -rf $kubeconfig_path
+    ls -las $kubeconfig_path
+    fred="$(dirname "$kubeconfig_path")"
+    echo "DEBUG: dirname kubeconfig_path is $fred"
     mkdir -p "$(dirname "$kubeconfig_path")"
-    #DEBUG/TODO this needs fixing ans testing to support  local and remote configs 
+
+    ls -las $kubeconfig_path
     cp /etc/rancher/k3s/k3s.yaml "$kubeconfig_path"
     chown "$k8s_user" "$kubeconfig_path"
     chmod 600 "$kubeconfig_path"
-    export KUBECONFIG="$kubeconfig_path"
     logWithVerboseCheck "$debug" debug "k3s kubeconfig copied to $kubeconfig_path"
     printf "[ok]\n"
+
+    run_as_user "kubectl get nodes" 
+
 }
 
 function check_nginx_running {
@@ -48,7 +71,6 @@ function check_nginx_running {
 }
 
 function get_ingress_ip {
-
     ingress_ip=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
     if [ -z "$ingress_ip" ]; then
         ingress_ip=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
@@ -65,8 +87,93 @@ function get_ingress_ip {
     fi
 }
 
-function install_nginx {
-    printf "\r==> Installing NGINX ingress controller and waiting for it to be ready\n"
+#------------------------------------------------------------------------------
+# Function: check_and_load_helm_repos
+# Description: Ensures a fixed set of Helm repos exist and are up-to-date.
+#              Adds missing repos and updates existing ones if URLs differ.
+#              minimises updates and network traffic 
+#------------------------------------------------------------------------------
+check_and_load_helm_repos() {
+printf "\r==> Check and load Helm repositories    "
+  local updated=false
+
+  # Gazelle Repos List (name and URL)
+  local repos=(
+    "kiwigrid https://kiwigrid.github.io"
+    "kokuwa https://kokuwaio.github.io/helm-charts"
+    "codecentric https://codecentric.github.io/helm-charts"
+    "bitnami https://charts.bitnami.com/bitnami"
+    "cowboysysop https://cowboysysop.github.io/charts/"
+    "redpanda-data https://charts.redpanda.com/"
+    "ingress-nginx https://kubernetes.github.io/ingress-nginx"
+  )
+
+  # Cache repo list once
+  local repo_list_yaml
+  repo_list_yaml=$(helm repo list -o yaml 2>/dev/null)
+
+  # Loop over known repos
+  for entry in "${repos[@]}"; do
+    local repo_name repo_url existing_url
+    repo_name=$(echo "$entry" | awk '{print $1}')
+    repo_url=$(echo "$entry" | awk '{print $2}')
+
+    # Extract existing URL from cached YAML
+    existing_url=$(echo "$repo_list_yaml" | grep -A1 "^- name: $repo_name" | grep "url:" | awk '{print $2}')
+    if [[ -z "$existing_url" ]]; then
+      if ! run_as_user "helm repo add $repo_name $repo_url" >/dev/null 2>&1; then
+        echo "  ** Error: Failed to add Helm repo '$repo_name' ($repo_url)" >&2
+        exit 1
+      fi
+      updated=true
+
+    elif [[ "$existing_url" != "$repo_url" ]]; then
+      echo "  ** Warning: Helm repo '$repo_name' URL mismatch." >&2
+      echo "     Found: $existing_url" >&2
+      echo "     Expected: $repo_url" >&2
+
+      if ! run_as_user "helm repo remove $repo_name" >/dev/null 2>&1; then
+        echo "  ** Error: Failed to remove mismatched Helm repo '$repo_name'" >&2
+        return 1
+      fi
+
+      if ! run_as_user "helm repo add $repo_name $repo_url" >/dev/null 2>&1; then
+        echo "  ** Error: Failed to re-add Helm repo '$repo_name' ($repo_url)" >&2
+        return 1
+      fi
+      updated=true
+    fi
+  done
+
+  # Refresh all repos once if needed
+  if [[ "$updated" == true ]]; then
+    if ! run_as_user "helm repo update" >/dev/null 2>&1; then
+      echo "  ** Error: Failed to update Helm repos" >&2
+      exit 1
+    fi
+  fi
+  printf "      [ok]\n"
+}
+
+
+# function helm_repo_list_setup {
+#     check_and_load_helm_repos 
+#     printf "\r==> add the helm repos required to install and run infrastructure for vNext, Paymenthub EE and MifosX\n"
+#     su - "$k8s_user" -c "helm repo add kiwigrid https://kiwigrid.github.io" > /dev/null 2>&1
+#     su - "$k8s_user" -c "helm repo add kokuwa https://kokuwaio.github.io/helm-charts" > /dev/null 2>&1
+#     su - "$k8s_user" -c "helm repo add codecentric https://codecentric.github.io/helm-charts" > /dev/null 2>&1
+#     su - "$k8s_user" -c "helm repo add bitnami https://charts.bitnami.com/bitnami" > /dev/null 2>&1
+#     su - "$k8s_user" -c "helm repo add cowboysysop https://cowboysysop.github.io/charts/" > /dev/null 2>&1
+#     su - "$k8s_user" -c "helm repo add redpanda-data https://charts.redpanda.com/" > /dev/null 2>&1
+#     su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
+# }
+
+#------------------------------------------------------------------------------
+# Description: Install NGINX ingress controller in a local cluster using Helm 
+#              if not already installed. Wait for it to be running.   
+#------------------------------------------------------------------------------ 
+function install_nginx_local_cluster {
+    printf "\r==> Installing NGINX ingress controller "
     if check_nginx_running; then 
         printf "[ NGINX ingress controller already installed and running ]\n"
         if [[ "$envionment" == "remote" ]]; then
@@ -74,39 +181,41 @@ function install_nginx {
         fi
         return 0 
     fi 
-    if [[ "$environment" == "local" ]]; then 
-        #export KUBECONFIG="$kubeconfig_path"
-        su - "$k8s_user" -c "helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx" > /dev/null 2>&1
-        su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
-        su - "$k8s_user" -c "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
-        su - "$k8s_user" -c "helm install ingress-nginx ingress-nginx/ingress-nginx \
-                            --create-namespace --namespace ingress-nginx \
-                            --set controller.service.type=NodePort \
-                            --wait --timeout 1200s \
-                            -f $NGINX_VALUES_FILE" > /dev/null 2>&1
-        if check_nginx_running; then 
-            printf "[ok]\n"
-        else
-            printf "** Error: Helm install of NGINX ingress controller failed, pod is not running **\n"
-            exit 1
-        fi
+    #export KUBECONFIG="$kubeconfig_path"
+    # Check if the ingress-nginx repo is already added
+    # if ! helm repo list | grep -q '^ingress-nginx'; then
+    #     run_as_user "helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx"
+    # fi
+    # run_as_user "helm repo update" > /dev/null 2>&1
+    run_as_user  "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
+    run_as_user  "helm install ingress-nginx ingress-nginx/ingress-nginx \
+                        --create-namespace --namespace ingress-nginx \
+                        --set controller.service.type=NodePort \
+                        --wait --timeout 1200s \
+                        -f $NGINX_VALUES_FILE" > /dev/null 2>&1
+    if check_nginx_running; then 
+        printf "[ok]\n"
     else
-        #export KUBECONFIG="$kubeconfig_path"
-        su - "$k8s_user" -c "helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx" > /dev/null 2>&1
-        su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
-        su - "$k8s_user" -c "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
-        su - "$k8s_user" -c "helm install ingress-nginx ingress-nginx/ingress-nginx \
-                          --create-namespace --namespace ingress-nginx \
-                          --set controller.service.type=LoadBalancer \
-                          --wait --timeout 1200s" > /dev/null 2>&1
-        if check_nginx_running; then 
-            printf "[ok]\n"
-            get_ingress_ip
-        else
-            printf "** Error: Helm install of NGINX ingress controller failed, pod is not running **\n"
-            exit 1
-        fi
+        printf "** Error: Helm install of NGINX ingress controller failed, pod is not running **\n"
+        exit 1
     fi
+    # else
+    #     #export KUBECONFIG="$kubeconfig_path"
+    #     su - "$k8s_user" -c "helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx" > /dev/null 2>&1
+    #     su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
+    #     su - "$k8s_user" -c "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
+    #     su - "$k8s_user" -c "helm install ingress-nginx ingress-nginx/ingress-nginx \
+    #                       --create-namespace --namespace ingress-nginx \
+    #                       --set controller.service.type=LoadBalancer \
+    #                       --wait --timeout 1200s" > /dev/null 2>&1
+    #     if check_nginx_running; then 
+    #         printf "[ok]\n"
+    #         get_ingress_ip
+    #     else
+    #         printf "** Error: Helm install of NGINX ingress controller failed, pod is not running **\n"
+    #         exit 1
+    #     fi
+    # fi
 }
 
 function install_k8s_tools {
@@ -184,16 +293,7 @@ function install_k8s_tools {
     printf "   [ok]\n"
 }
 
-function add_helm_repos {
-    printf "\r==> add the helm repos required to install and run infrastructure for vNext, Paymenthub EE and MifosX\n"
-    su - "$k8s_user" -c "helm repo add kiwigrid https://kiwigrid.github.io" > /dev/null 2>&1
-    su - "$k8s_user" -c "helm repo add kokuwa https://kokuwaio.github.io/helm-charts" > /dev/null 2>&1
-    su - "$k8s_user" -c "helm repo add codecentric https://codecentric.github.io/helm-charts" > /dev/null 2>&1
-    su - "$k8s_user" -c "helm repo add bitnami https://charts.bitnami.com/bitnami" > /dev/null 2>&1
-    su - "$k8s_user" -c "helm repo add cowboysysop https://cowboysysop.github.io/charts/" > /dev/null 2>&1
-    su - "$k8s_user" -c "helm repo add redpanda-data https://charts.redpanda.com/" > /dev/null 2>&1
-    su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
-}
+
 
 function report_cluster_info {
     #export KUBECONFIG="$kubeconfig_path"
