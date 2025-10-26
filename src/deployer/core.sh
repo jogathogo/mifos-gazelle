@@ -151,42 +151,85 @@ function createIngressSecret {
     local namespace="$1"
     local domain_name="$2"
     local secret_name="$3"
-    key_dir="$HOME/.ssh"
+    local key_dir="$k8s_user_home/.ssh"
+
+    echo "DEBUG: Starting createIngressSecret with namespace=$namespace, domain_name=$domain_name, secret_name=$secret_name, key_dir=$key_dir"
+
+    # Ensure key_dir exists and is accessible
+    echo "DEBUG: Creating directory $key_dir if it doesn't exist"
+    mkdir -p "$key_dir" || { echo " ** Error creating directory $key_dir: $?"; exit 1; }
+    ls -ld "$key_dir" || echo "DEBUG: Directory $key_dir listing failed"
 
     # Generate private key
-    openssl genrsa -out "$key_dir/$domain_name.key" 2048 >> /dev/null 2>&1 
+    echo "DEBUG: Generating private key at $key_dir/$domain_name.key"
+    openssl genrsa -out "$key_dir/$domain_name.key" 2048 >/dev/null 2>&1 || { echo " ** Error generating private key: $?"; ls -l "$key_dir/$domain_name.key" 2>/dev/null || echo "DEBUG: Key file not found"; exit 1; }
+
+    # Verify key file exists and is readable
+    if [ ! -f "$key_dir/$domain_name.key" ]; then
+        echo " ** Error: Private key $key_dir/$domain_name.key was not created"
+        exit 1
+    fi
+    ls -l "$key_dir/$domain_name.key"
 
     # Generate self-signed certificate
+    echo "DEBUG: Generating certificate at $key_dir/$domain_name.crt"
     openssl req -x509 -new -nodes -key "$key_dir/$domain_name.key" -sha256 -days 365 -out "$key_dir/$domain_name.crt" -subj "/CN=$domain_name" -extensions v3_req -config <(
-    cat <<EOF
-    [req]
-    distinguished_name = req_distinguished_name
-    x509_extensions = v3_req
-    prompt = no
-    [req_distinguished_name]
-    CN = $domain_name
-    [v3_req]
-    subjectAltName = @alt_names
-    keyUsage = critical, digitalSignature, keyEncipherment
-    extendedKeyUsage = serverAuth
-    [alt_names]
-    DNS.1 = $domain_name
+        cat <<EOF
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+[req_distinguished_name]
+CN = $domain_name
+[v3_req]
+subjectAltName = @alt_names
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+[alt_names]
+DNS.1 = $domain_name
 EOF
-) > /dev/null 2>&1 
+    ) >/dev/null 2>&1 || { echo " ** Error generating certificate: $?"; ls -l "$key_dir/$domain_name.crt" 2>/dev/null || echo "DEBUG: Certificate file not found"; exit 1; }
+
+    # Verify certificate file exists and is readable
+    if [ ! -f "$key_dir/$domain_name.crt" ]; then
+        echo " ** Error: Certificate $key_dir/$domain_name.crt was not created"
+        exit 1
+    fi
+    ls -l "$key_dir/$domain_name.crt"
+
     # Verify the certificate
-    openssl x509 -in "$key_dir/$domain_name.crt" -noout -text > /dev/null 2>&1 
+    echo "DEBUG: Verifying certificate"
+    openssl x509 -in "$key_dir/$domain_name.crt" -noout -text >/dev/null 2>&1 || { echo " ** Error verifying certificate: $?"; exit 1; }
 
-    # Create the Kubernetes TLS secret
-    #kubectl create secret tls "$secret_name" --cert="$key_dir/$domain_name.crt" --key="$key_dir/$domain_name.key" -n "$namespace" > /dev/null 2>&1 
-    #run_as_user "kubectl create secret tls \"$secret_name\" --cert=\"$key_dir/$domain_name.crt\" --key=\"$key_dir/$domain_name.key\" -n \"$namespace\""
+    # Change ownership of certificate files to k8s_user
+    echo "DEBUG: Changing ownership of certificate files to $k8s_user"
+    chown "$k8s_user":"$k8s_user" "$key_dir/$domain_name.crt" "$key_dir/$domain_name.key" || { echo " ** Error changing ownership of certificate files: $?"; ls -l "$key_dir/$domain_name."{crt,key}; exit 1; }
 
-    if [ $? -eq 0 ]; then
-      echo "    Self-signed certificate and secret $secret_name created successfully in namespace $namespace "
+    # Ensure permissions are restrictive but readable by k8s_user
+    echo "DEBUG: Setting permissions on certificate files"
+    chmod 600 "$key_dir/$domain_name.crt" "$key_dir/$domain_name.key" || { echo " ** Error setting permissions on certificate files: $?"; ls -l "$key_dir/$domain_name."{crt,key}; exit 1; }
+
+    # Verify k8s_user can access the files
+    echo "DEBUG: Verifying file access for $k8s_user"
+    su - "$k8s_user" -c "test -r \"$key_dir/$domain_name.crt\" && test -r \"$key_dir/$domain_name.key\"" || { echo " ** Error: $k8s_user cannot read certificate files"; ls -l "$key_dir/$domain_name."{crt,key}; exit 1; }
+
+    # Create the Kubernetes TLS secret using run_as_user
+    echo "DEBUG: Running kubectl create secret as $k8s_user"
+    local kubectl_output
+    kubectl_output=$(run_as_user "kubectl create secret tls \"$secret_name\" --cert=\"$key_dir/$domain_name.crt\" --key=\"$key_dir/$domain_name.key\" -n \"$namespace\"" 2>&1)
+    local kubectl_exit_code=$?
+
+    echo "DEBUG: kubectl command output: $kubectl_output"
+    echo "DEBUG: kubectl command exit code: $kubectl_exit_code"
+
+    if [ $kubectl_exit_code -eq 0 ]; then
+        echo "    Self-signed certificate and secret $secret_name created successfully in namespace $namespace"
     else
-      echo " ** Error creating Self-signed certificate and secret $secret_name in namespace $namespace "
-      exit 1 
-    fi 
-} 
+        echo " ** Error creating self-signed certificate and secret $secret_name in namespace $namespace"
+        echo " ** kubectl error output: $kubectl_output"
+        exit 1
+    fi
+}
 
 function manageElasticSecrets {
     local action="$1"
