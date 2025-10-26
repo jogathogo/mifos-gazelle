@@ -17,8 +17,8 @@ function DeployMifosXfromYaml() {
     
     # Wait for fineract-server pod to be ready
     echo "    Waiting for fineract-server pod to be ready (timeout: ${timeout_secs}s)..."
-    if kubectl wait --for=condition=Ready pod -l app=fineract-server \
-        --namespace="$MIFOSX_NAMESPACE" --timeout="${timeout_secs}s" > /dev/null 2>&1 ; then
+    if run_as_user "kubectl wait --for=condition=Ready pod -l app=fineract-server \
+        --namespace=\"$MIFOSX_NAMESPACE\" --timeout=\"${timeout_secs}s\" "  > /dev/null 2>&1 ; then
         echo "    MifosX  is  ready"
     else
         echo -e "${RED} ERROR: MifosX fineract-server pod failed to become ready within ${timeout_secs} seconds ${RESET}"
@@ -28,6 +28,7 @@ function DeployMifosXfromYaml() {
     echo -e "MifosX (fineract + web app) Deployed"
     echo -e "=====================================${RESET}\n"
 }
+
 function generateMifosXandVNextData {
   # generate load and syncronize MifosX accounts and vNext Oracle associations  
   result_vnext=$(isDeployed "vnext" "$VNEXT_NAMESPACE" "reporting-api-svc" )

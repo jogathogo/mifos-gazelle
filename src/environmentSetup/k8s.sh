@@ -32,17 +32,9 @@ function install_k3s {
         exit 1
     fi
 
-    # echo "\nk8s_user_home is $k8s_user_home"
-    # echo "export KUBECONFIG=$kubeconfig_path" >> "$k8s_user_home/.bashrc"
-    # echo "export KUBECONFIG=$kubeconfig_path" >> "$k8s_user_home/.bash_profile"
-    #export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    #sudo chown "$k8s_user" "$KUBECONFIG"
-    echo "DEBUG: KUBECONFIG is $KUBECONFIG"
-    echo "DEBUG: kubeconfig_path is $kubeconfig_path"
     rm -rf $kubeconfig_path
     ls -las $kubeconfig_path
     fred="$(dirname "$kubeconfig_path")"
-    echo "DEBUG: dirname kubeconfig_path is $fred"
     mkdir -p "$(dirname "$kubeconfig_path")"
     chown "$k8s_user" "$(dirname "$kubeconfig_path")"
 
@@ -52,8 +44,6 @@ function install_k3s {
     chmod 600 "$kubeconfig_path"
     logWithVerboseCheck "$debug" debug "k3s kubeconfig copied to $kubeconfig_path"
     printf "[ok]\n"
-
-    run_as_user "kubectl get nodes" 
 
 }
 

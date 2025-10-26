@@ -38,25 +38,91 @@ function deployvNext() {
 }
 
 function vnext_restore_demo_data {
-  local mongo_data_dir=$1
-  local mongo_dump_file=$2
-  local namespace=$3 
-  printf "    restoring vNext mongodb demonstration/test data "
-  mongopod=`kubectl get pods --namespace $namespace | grep -i mongodb |awk '{print $1}'` 
-  mongo_root_pw=`kubectl get secret --namespace $namespace  mongodb  -o jsonpath='{.data.MONGO_INITDB_ROOT_PASSWORD}'| base64 -d` 
-  if [[ -z "$mongo_root_pw" ]]; then
-    echo -e "${RED}   Restore Failed to retrieve MongoDB root password from secret in namespace '$namespace'${RESET}" 
-    return 1
-  fi
-  kubectl cp  $mongo_data_dir/$mongo_dump_file $mongopod:/tmp/mongodump.gz  --namespace $namespace  >/dev/null 2>&1 # copy the demo / test data into the mongodb pod
-  # Execute mongorestore
-  if ! kubectl exec --namespace "$namespace" --stdin --tty "$mongopod" -- mongorestore -u root -p "$mongo_root_pw" \
-      --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin >/dev/null 2>&1; then
-    echo -e "${RED}   mongorestore command failed ${RESET}" 
-    return 1
-  fi
-  printf " [ ok ] \n"
+    local mongo_data_dir="$1"
+    local mongo_dump_file="$2"
+    local namespace="$3"
+
+    # Verify input parameters
+    if [ -z "$mongo_data_dir" ] || [ -z "$mongo_dump_file" ] || [ -z "$namespace" ]; then
+        echo " ** Error: Missing required parameters (mongo_data_dir, mongo_dump_file, namespace)"
+        return 1
+    fi
+
+    # Verify mongo_data_dir and mongo_dump_file exist and are readable
+    if [ ! -d "$mongo_data_dir" ] || [ ! -r "$mongo_data_dir/$mongo_dump_file" ]; then
+        echo " ** Error: mongo_data_dir $mongo_data_dir does not exist or $mongo_dump_file is not readable"
+        return 1
+    fi
+
+    # Check if k8s_user can access the dump file
+    if ! su - "$k8s_user" -c "test -r '$mongo_data_dir/$mongo_dump_file'" 2>/dev/null; then
+        # Copy dump file to a temporary directory accessible to k8s_user
+        local temp_dir
+        temp_dir=$(mktemp -d -p "/tmp" "mongo_restore_XXXXXX") || { echo " ** Error: Failed to create temporary directory"; return 1; }
+        cp "$mongo_data_dir/$mongo_dump_file" "$temp_dir/$mongo_dump_file" || { echo " ** Error: Failed to copy $mongo_dump_file to temporary directory"; rm -rf "$temp_dir"; return 1; }
+        chown "$k8s_user":"$k8s_user" "$temp_dir/$mongo_dump_file" || { echo " ** Error: Failed to change ownership of copied dump file"; rm -rf "$temp_dir"; return 1; }
+        chmod 600 "$temp_dir/$mongo_dump_file" || { echo " ** Error: Failed to set permissions on copied dump file"; rm -rf "$temp_dir"; return 1; }
+        mongo_data_dir="$temp_dir"
+    fi
+
+    printf "    restoring vNext mongodb demonstration/test data "
+
+    # Get MongoDB pod name using run_as_user
+    local mongopod
+    mongopod=$(run_as_user "kubectl get pods --namespace \"$namespace\" | grep -i mongodb | awk '{print \$1}'") || { echo -e "\n ** Error: Failed to retrieve MongoDB pod name"; rm -rf "${temp_dir:-}"; return 1; }
+    if [ -z "$mongopod" ]; then
+        echo -e "\n ** Error: No MongoDB pod found in namespace '$namespace'"
+        rm -rf "${temp_dir:-}"
+        return 1
+    fi
+
+    # Get MongoDB root password using run_as_user
+    local mongo_root_pw
+    mongo_root_pw=$(run_as_user "kubectl get secret --namespace \"$namespace\" mongodb -o jsonpath='{.data.MONGO_INITDB_ROOT_PASSWORD}' | base64 -d") || { echo -e "\n ** Error: Failed to retrieve MongoDB root password from secret"; rm -rf "${temp_dir:-}"; return 1; }
+    if [ -z "$mongo_root_pw" ]; then
+        echo -e "\n ** Error: MongoDB root password is empty in namespace '$namespace'"
+        rm -rf "${temp_dir:-}"
+        return 1
+    fi
+
+    # Copy dump file to pod using run_as_user
+    if ! run_as_user "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" >/dev/null 2>&1; then
+        echo -e "\n ** Error: Failed to copy $mongo_dump_file to pod $mongopod"
+        rm -rf "${temp_dir:-}"
+        return 1
+    fi
+
+    # Execute mongorestore using run_as_user
+    if ! run_as_user "kubectl exec --namespace \"$namespace\" --stdin --tty \"$mongopod\" -- mongorestore -u root -p \"$mongo_root_pw\" --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin" >/dev/null 2>&1; then
+        echo -e "\n ** Error: mongorestore command failed"
+        rm -rf "${temp_dir:-}"
+        return 1
+    fi
+
+    rm -rf "${temp_dir:-}"  # Clean up temporary directory if created
+    printf " [ ok ]\n"
 }
+
+# function vnext_restore_demo_data {
+#   local mongo_data_dir=$1
+#   local mongo_dump_file=$2
+#   local namespace=$3 
+#   printf "    restoring vNext mongodb demonstration/test data "
+#   mongopod=`kubectl get pods --namespace $namespace | grep -i mongodb |awk '{print $1}'` 
+#   mongo_root_pw=`kubectl get secret --namespace $namespace  mongodb  -o jsonpath='{.data.MONGO_INITDB_ROOT_PASSWORD}'| base64 -d` 
+#   if [[ -z "$mongo_root_pw" ]]; then
+#     echo -e "${RED}   Restore Failed to retrieve MongoDB root password from secret in namespace '$namespace'${RESET}" 
+#     return 1
+#   fi
+#   kubectl cp  $mongo_data_dir/$mongo_dump_file $mongopod:/tmp/mongodump.gz  --namespace $namespace  >/dev/null 2>&1 # copy the demo / test data into the mongodb pod
+#   # Execute mongorestore
+#   if ! kubectl exec --namespace "$namespace" --stdin --tty "$mongopod" -- mongorestore -u root -p "$mongo_root_pw" \
+#       --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin >/dev/null 2>&1; then
+#     echo -e "${RED}   mongorestore command failed ${RESET}" 
+#     return 1
+#   fi
+#   printf " [ ok ] \n"
+# }
 
 function vnext_configure_ttk {
   local ttk_files_dir=$1

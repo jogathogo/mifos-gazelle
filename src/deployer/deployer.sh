@@ -32,7 +32,7 @@ function cloneRepo() {
     cd "$repo_path" || return 1
     # Check if specified branch exists locally
     if git show-ref --verify --quiet "refs/heads/$branch"; then
-      echo "Repository $repo_path with branch $branch is up-to-date."
+      #echo "Repository $repo_path with branch $branch is up-to-date."
       return 0
     fi
     # Remove repo if branch doesn't exist
@@ -58,7 +58,7 @@ function cloneRepo() {
 function deleteResourcesInNamespaceMatchingPattern() {
     local pattern="$1"
     if [ -z "$pattern" ]; then
-        echo "  ** Error: need to specify resources to remove  ."
+        echo "  ** Error: need to specify resources to delete  ."
         exit 1 
     fi
         
@@ -72,7 +72,7 @@ function deleteResourcesInNamespaceMatchingPattern() {
     matching_namespaces=$(echo "$all_namespaces_output" | grep -E "$pattern" | sed 's/^namespace\///' || true)
 
     if [ -z "$matching_namespaces" ]; then
-        printf "      namespaces %s not found    [skipping] \n"  $pattern
+        # printf "      namespaces %s not found    [skipping] \n"  $pattern
         return 0
     fi
     
@@ -84,12 +84,11 @@ function deleteResourcesInNamespaceMatchingPattern() {
             continue
         fi
 
-        #FRED printf "Delete all resources and the namespace %s" $namespace
-        
         # Delete the namespace (this removes all resources within it)
-        if run_as_user "kubectl delete ns \"$namespace\"" >> /dev/null 2>&1 ; then
-            echo " [ok]"
-        else
+        #printf "    deleting namespace and resources                [%s]"  $namespace
+        if ! run_as_user "kubectl delete ns \"$namespace\"" >> /dev/null 2>&1 ; then
+#
+#        else
             echo " [FAILED]"
             echo "Failed to delete namespace $namespace. Check logs for details."
             exit_code=1
@@ -295,6 +294,19 @@ function test_mifosx() {
   # TODO: Implement testing logic
 }
 
+
+
+#------------------------------------------------------------
+# Description : Prints cleanup end message .
+#------------------------------------------------------------
+function print_cleanup_end_message() {
+  cat << EOF
+=================================
+Mifos Gazelle "cleanup" commplete
+=================================
+EOF
+}
+
 #------------------------------------------------------------
 # Description : Prints final deployment status and access info.
 # Usage : printEndMessage
@@ -302,7 +314,6 @@ function test_mifosx() {
 #------------------------------------------------------------
 function printEndMessage() {
   cat << EOF
-
 =================================
 Thank you for using Mifos Gazelle
 =================================
@@ -313,7 +324,6 @@ kubectl get pods -n paymenthub    # For testing PaymentHub EE
 kubectl get pods -n mifosx        # For testing MifosX
 
 or install k9s by executing ./src/utils/install-k9s.sh in this terminal window
-
 EOF
 }
 
@@ -325,33 +335,40 @@ EOF
 function deleteApps() {
   local appsToDelete="$2"
 
-  if [[ "$appsToDelete" == "all" ]]; then
-    echo "Deleting all applications and related resources."
-    deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
-    deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
-    deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-    deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
-    deleteResourcesInNamespaceMatchingPattern "default"
-    return 0
-  fi
-
-  # Iterate over each application in the space-separated list
-  printf "==> Delete specific applications: \n" 
+  # if [[ "$appsToDelete" == "all" ]]; then
+  #   echo "Deleting all applications and related resources."
+  #   deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
+  #   deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
+  #   deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
+  #   deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
+  #   deleteResourcesInNamespaceMatchingPattern "default"
+  #   return 0
+  # fi
+  
   #printf "      %s\n" "$appsToDelete"
   
   for app in $appsToDelete; do
     case "$app" in
       "vnext")
+        printf "    deleting vnext "
         deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
+        printf "                                 [ok]\n"
         ;;
       "mifosx")
+        printf "    deleting mifosx"
         deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
+        printf "                                 [ok]\n"
         ;;
       "phee")
+        printf "    deleting paymenthub "
         deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
+        printf "                            [ok]\n"
         ;;
       "infra")
+        printf "    deleting infrastructure  "
         deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
+        printf "                               [ok]\n"
+
         ;;
       *)
         echo -e "${RED}Invalid app '$app' for deletion. This should have been caught by validateInputs.${RESET}"
@@ -360,6 +377,8 @@ function deleteApps() {
         ;;
     esac
   done
+  
+  print_cleanup_end_message
 }
 
 #------------------------------------------------------------
@@ -420,6 +439,5 @@ function deployApps() {
     done
   fi
 
-  addKubeConfig >> /dev/null 2>&1
   printEndMessage
 }

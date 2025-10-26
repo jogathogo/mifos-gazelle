@@ -4,11 +4,10 @@
 function deployPH(){
   # TODO make this a global variable
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
-  echo "DEBUG-TOM Checking if $PH_RELEASE_NAME is already deployed in namespace $PH_NAMESPACE"
+
   if is_app_running "$PH_NAMESPACE"; then
-    echo "DENBUG-TOM2 apparently it things app is running"
     if [[ "$redeploy" == "false" ]]; then
-      echo "$PH_RELEASE_NAME is already deployed. Skipping deployment."
+      echo "    $PH_RELEASE_NAME is already deployed. Skipping deployment."
       return 0
     else # need to delete prior to redeploy 
       deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
@@ -22,6 +21,7 @@ function deployPH(){
   createNamespace "$PH_NAMESPACE"
   #checkPHEEDependencies
   preparePaymentHubChart
+  manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
   manageElasticSecrets create "$PH_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
   manageElasticSecrets create "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
   createIngressSecret "$PH_NAMESPACE" "$GAZELLE_DOMAIN" sandbox-secret
@@ -53,19 +53,19 @@ function preparePaymentHubChart(){
       local actual=$(find "$chartPath/charts" -maxdepth 1 -name '*.tgz' 2>/dev/null | wc -l)
 
       if [[ $actual -ge $expected && $expected -gt 0 ]]; then
-        echo "      charts/ already populated ($actual/$expected) → running helm dep build"
+        #echo "      charts/ already populated ($actual/$expected) → running helm dep build"
         su - $k8s_user -c "cd $chartPath && helm dep build" >> /dev/null 2>&1
       else
-        echo "      charts/ not populated correctly ($actual/$expected) → running helm dep update"
+        #echo "      charts/ not populated correctly ($actual/$expected) → running helm dep update"
         su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
       fi
     else
-      echo "      no Chart.lock found → running helm dep update"
+      #echo "      no Chart.lock found → running helm dep update"
       su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
     fi
 
     # Always regenerate repo index
-    su - $k8s_user -c "cd $chartPath && helm repo index ." >> /dev/null 2>&1
+    #su - $k8s_user -c "cd $chartPath && helm repo index ." >> /dev/null 2>&1
   }
 
   # Run for ph-ee-engine
