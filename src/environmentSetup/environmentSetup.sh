@@ -79,78 +79,16 @@ function delete_k8s_local_cluster {
 function print_end_message {
     echo -e "\n${GREEN}============================"
     echo -e "Environment setup successful"
-    echo -e "============================${RESET}\n"
+    echo -e "============================${RESET}"
 }
 
 function print_end_message_delete {
-    echo -e "\n==================================================="
-    echo -e "Thank you for using Mifos Gazelle cleanup successful"
-    echo -e "======================================================\n\n"
-    echo -e "Copyright © 2023 The Mifos Initiative"
+    echo -e "\n===================================================="
+    echo -e "cleanup successful "
+    echo -e "Thank you for using Mifos Gazelle"
+    echo -e "======================================================"
+    echo -e "Copyright © 2023 The Mifos Initiative\n"
 }
-
-# function configure_k8s_user_env() {
-#     local start_marker="# GAZELLE_START start of config added by mifos-gazelle #"
-#     local end_marker="# GAZELLE_END end of config added by mifos-gazelle #"
-#     local bashrc="$k8s_user_home/.bashrc"
-#     local bash_profile="$k8s_user_home/.bash_profile"
-    
-#     # Ensure files exist and have correct ownership
-#     for file in "$bashrc" "$bash_profile"; do
-#         if [ ! -f "$file" ]; then
-#             touch "$file"
-#         fi
-#         chown "$k8s_user":"$k8s_user" "$file"
-#     done
-
-#     # Check if configuration already exists
-#     if grep -q "$start_marker" "$bashrc" 2>/dev/null; then
-#         printf "==> Kubernetes configuration for .bashrc for user %s already exists - skipping\n" "$k8s_user"
-        
-#         # Still ensure KUBECONFIG is set correctly in existing config
-#         if ! grep -q "export KUBECONFIG=$kubeconfig_path" "$bashrc" 2>/dev/null; then
-#             echo "    Updating KUBECONFIG path in existing configuration..."
-#             # Remove old KUBECONFIG line between markers and add new one
-#             perl -i -pe "s|^export KUBECONFIG=.*|export KUBECONFIG=$kubeconfig_path| if /$start_marker/ .. /$end_marker/" "$bashrc"
-#         fi
-#         return 0
-#     fi
-#     printf "==> Adding kubernetes configuration for %s .bashrc\n" "$k8s_user"
-    
-#     # Add configuration to .bashrc
-#     cat >> "$bashrc" << EOF
-# $start_marker
-# source <(kubectl completion bash)
-# alias k=kubectl
-# complete -F __start_kubectl k
-# alias ksetns="kubectl config set-context --current --namespace"
-# alias ksetuser="kubectl config set-context --current --user"
-# alias cdg="cd $k8s_user_home/mifos-gazelle"
-# export PATH=\$PATH:/usr/local/bin
-# export KUBECONFIG=$kubeconfig_path
-# $end_marker
-# EOF
-
-#     # Configure .bash_profile to source .bashrc and set KUBECONFIG
-#     # Remove any existing GAZELLE configuration first
-#     perl -i -ne "print unless /$start_marker/ .. /$end_marker/" "$bash_profile" 2>/dev/null || true
-    
-#     # Add clean configuration to .bash_profile
-#     cat >> "$bash_profile" << EOF
-# $start_marker
-# # Source bashrc to get all configurations
-# if [ -f ~/.bashrc ]; then
-#     source ~/.bashrc
-# fi
-# export KUBECONFIG=$kubeconfig_path
-# $end_marker
-# EOF
-
-#     # Ensure correct ownership
-#     chown "$k8s_user":"$k8s_user" "$bashrc" "$bash_profile"
-    
-#     printf "    Kubernetes configuration added successfully\n"
-# }
 
 function configure_k8s_user_env {
     start_message="# GAZELLE_START start of config added by mifos-gazelle #"
@@ -236,7 +174,7 @@ function envSetupLocalCluster {
             install_nginx_local_cluster
             $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
         fi
-        printf "\r==> kubernetes k3s v%s configured for [%s]\n" \
+        printf "\r==> local kubernetes v%s configured sucessfully for [%s]\n" \
                   "$k8s_version" "$k8s_user"
         print_end_message
     elif [[ "$mode" == "cleanapps" ]]; then
@@ -253,7 +191,8 @@ function envSetupLocalCluster {
         if ! is_local_cluster_installed; then
             printf "    Local kubernetes cluster is NOT installed   \n"
             printf "    Nothing to delete. Exiting.\n\n"
-            exit 1
+            print_end_message_delete
+            exit 0
         fi
         delete_k8s_local_cluster
         print_end_message_delete

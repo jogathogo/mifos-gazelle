@@ -125,7 +125,7 @@ function deployHelmChartFromDir() {
       helm_cmd="$helm_cmd -f $values_file"
   fi
 
-  run_as_user "$helm_cmd" > /dev/null 2>&1
+  run_as_user "$helm_cmd" #> /dev/null 2>&1
   check_command_execution $? "$helm_cmd"
 
   # Verify deployment
@@ -307,12 +307,16 @@ Mifos Gazelle "cleanup" commplete
 EOF
 }
 
+
+
+
+
 #------------------------------------------------------------
 # Description : Prints final deployment status and access info.
-# Usage : printEndMessage
-# Example: printEndMessage
+# Usage : print_deployment_end_message
+# Example: print_deployment_end_message
 #------------------------------------------------------------
-function printEndMessage() {
+function print_deployment_end_message() {
   cat << EOF
 =================================
 Thank you for using Mifos Gazelle
@@ -419,6 +423,7 @@ function deployApps() {
           if [[ "$redeploy" == "true" ]]; then 
             echo "Removing current mifosx and redeploying"
             deleteApps 1 "mifosx"
+            
           fi 
           deployInfrastructure "false"
           DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR" 
@@ -437,7 +442,8 @@ function deployApps() {
       
       #echo -e "${BLUE}--- Finished deploying '$app' ---${RESET}\n"
     done
+
   fi
 
-  printEndMessage
+  print_deployment_end_message
 }

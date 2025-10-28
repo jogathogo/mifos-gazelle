@@ -10,7 +10,7 @@ function DeployMifosXfromYaml() {
     # Restore the database dump before starting MifosX
     # Assumes FINERACT_LIQUIBASE_ENABLED=false in fineract deployment
     echo "    Restoring MifosX database dump "
-    $UTILS_DIR/dump-restore-fineract-db.sh -r > /dev/null
+    run_as_user "$UTILS_DIR/dump-restore-fineract-db.sh -r"  > /dev/null
     
     echo "    deploying MifosX manifests from $manifests_dir"
     applyKubeManifests "$manifests_dir" "$MIFOSX_NAMESPACE"
@@ -31,8 +31,8 @@ function DeployMifosXfromYaml() {
 
 function generateMifosXandVNextData {
   # generate load and syncronize MifosX accounts and vNext Oracle associations  
-  result_vnext=$(isDeployed "vnext" "$VNEXT_NAMESPACE" "reporting-api-svc" )
-  result_mifosx=$(isDeployed "mifosx" "$MIFOSX_NAMESPACE" "fineract-server" )
+  result_vnext=$(is_app_running "vnext" )
+  result_mifosx=$(is_app_running  "mifosx" )
 
   if [[ "$result_vnext" == "true" ]]  && [[ "$result_mifosx" == "true" ]] ; then
     echo -e "${BLUE}Generating MifosX clients and accounts & registering associations with vNext Oracle ...${RESET}"

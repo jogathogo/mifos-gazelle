@@ -33,26 +33,23 @@ function install_k3s {
     fi
 
     rm -rf $kubeconfig_path
-    ls -las $kubeconfig_path
-    fred="$(dirname "$kubeconfig_path")"
     mkdir -p "$(dirname "$kubeconfig_path")"
     chown "$k8s_user" "$(dirname "$kubeconfig_path")"
-
-    ls -las $kubeconfig_path
     cp /etc/rancher/k3s/k3s.yaml "$kubeconfig_path"
     chown "$k8s_user" "$kubeconfig_path"
     chmod 600 "$kubeconfig_path"
+
     logWithVerboseCheck "$debug" debug "k3s kubeconfig copied to $kubeconfig_path"
     printf "[ok]\n"
 
 }
 
 function check_nginx_running {
-    nginx_pod_name=$(kubectl get pods -n ingress-nginx --no-headers -o custom-columns=":metadata.name" | grep nginx | head -n 1)
+    nginx_pod_name=$(run_as_user "kubectl get pods -n ingress-nginx --no-headers -o custom-columns=\":metadata.name\"" | grep nginx | head -n 1)
     if [ -z "$nginx_pod_name" ]; then
         return 1
     fi
-    pod_status=$(kubectl get pod -n ingress-nginx "$nginx_pod_name" -o jsonpath='{.status.phase}')
+    pod_status=$(run_as_user "kubectl get pod -n ingress-nginx \"$nginx_pod_name\" -o jsonpath='{.status.phase}'")
     if [ "$pod_status" == "Running" ]; then
         return 0
     else
@@ -142,7 +139,7 @@ printf "\r==> Check and load Helm repositories    "
       exit 1
     fi
   fi
-  printf "      [ok]\n"
+  printf "            [ok]\n"
 }
 
 
@@ -163,7 +160,7 @@ printf "\r==> Check and load Helm repositories    "
 #              if not already installed. Wait for it to be running.   
 #------------------------------------------------------------------------------ 
 function install_nginx_local_cluster {
-    printf "\r==> Installing NGINX ingress controller "
+    printf "\r==> Installing NGINX to local cluster "
     if ! check_nginx_running; then 
         run_as_user  "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
         run_as_user  "helm install ingress-nginx ingress-nginx/ingress-nginx \
@@ -173,7 +170,7 @@ function install_nginx_local_cluster {
                             -f $NGINX_VALUES_FILE" > /dev/null 2>&1
     fi 
     if check_nginx_running; then 
-        printf "[ok]\n"
+        printf "           [ok]\n"
     else
         printf "** Error: Helm install of NGINX ingress controller failed, pod is not running **\n"
         exit 1

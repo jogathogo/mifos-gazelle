@@ -45,7 +45,7 @@ function preparePaymentHubChart(){
   function ensureHelmDeps() {
     local chartPath=$1
     local chartName=$(basename "$chartPath")
-
+    
     echo "    ensuring dependencies for $chartName chart"
     if [[ -f "$chartPath/Chart.lock" && -s "$chartPath/Chart.lock" ]]; then
       # Count entries in Chart.lock and compare with .tgz files in charts/
@@ -53,17 +53,15 @@ function preparePaymentHubChart(){
       local actual=$(find "$chartPath/charts" -maxdepth 1 -name '*.tgz' 2>/dev/null | wc -l)
 
       if [[ $actual -ge $expected && $expected -gt 0 ]]; then
-        #echo "      charts/ already populated ($actual/$expected) → running helm dep build"
         su - $k8s_user -c "cd $chartPath && helm dep build" >> /dev/null 2>&1
       else
-        #echo "      charts/ not populated correctly ($actual/$expected) → running helm dep update"
         su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
       fi
     else
-      #echo "      no Chart.lock found → running helm dep update"
       su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
     fi
 
+    # TODO  is this needed ??
     # Always regenerate repo index
     #su - $k8s_user -c "cd $chartPath && helm repo index ." >> /dev/null 2>&1
   }

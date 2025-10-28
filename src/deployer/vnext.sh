@@ -3,15 +3,16 @@
 function deployvNext() {
   printf "\n==> Deploying Mojaloop vNext application \n"
   
-  result=$(isDeployed "vnext" "$VNEXT_NAMESPACE" "reporting-api-svc" )
-  if [[ "$result" == "true" ]]; then
+  if is_app_running  "$VNEXT_NAMESPACE"; then
     if [[ "$redeploy" == "false" ]]; then
       echo "    vNext application is already deployed. Skipping deployment."
       return
     else # need to delete prior to redeploy 
+      printf "    Redeploying vNext: Deleting existing resources in namespace %s\n" "$VNEXT_NAMESPACE"
       deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
     fi
   fi 
+
   createNamespace "$VNEXT_NAMESPACE"
   cloneRepo "$VNEXTBRANCH" "$VNEXT_REPO_LINK" "$APPS_DIR" "$VNEXTREPO_DIR"
   # remove the TTK-CLI pod as it is not needed and comes up in error mode 
@@ -34,7 +35,6 @@ function deployvNext() {
   echo -e "\n${GREEN}============================"
   echo -e "vnext Deployed"
   echo -e "============================${RESET}\n"
-
 }
 
 function vnext_restore_demo_data {
@@ -69,7 +69,7 @@ function vnext_restore_demo_data {
 
     # Get MongoDB pod name using run_as_user
     local mongopod
-    mongopod=$(run_as_user "kubectl get pods --namespace \"$namespace\" | grep -i mongodb | awk '{print \$1}'") || { echo -e "\n ** Error: Failed to retrieve MongoDB pod name"; rm -rf "${temp_dir:-}"; return 1; }
+    mongopod=$(run_as_user "kubectl get pods --namespace \"$namespace\" | grep -i mongodb | cut -d \" \" -f1") || { echo -e "\n ** Error: Failed to retrieve MongoDB pod name"; rm -rf "${temp_dir:-}"; return 1; }
     if [ -z "$mongopod" ]; then
         echo -e "\n ** Error: No MongoDB pod found in namespace '$namespace'"
         rm -rf "${temp_dir:-}"
@@ -85,8 +85,7 @@ function vnext_restore_demo_data {
         return 1
     fi
 
-    # Copy dump file to pod using run_as_user
-    if ! run_as_user "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" >/dev/null 2>&1; then
+    if ! run_as_user "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" > /dev/null 2>&1 ;  then
         echo -e "\n ** Error: Failed to copy $mongo_dump_file to pod $mongopod"
         rm -rf "${temp_dir:-}"
         return 1
