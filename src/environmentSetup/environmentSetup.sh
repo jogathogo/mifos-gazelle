@@ -68,7 +68,7 @@ function delete_k8s_local_cluster {
     rm -f /usr/local/bin/helm >> /dev/null 2>&1
     /usr/local/bin/k3s-uninstall.sh >> /dev/null 2>&1
     if [[ $? -eq 0 ]]; then
-        printf "            [ ok ] \n"
+        printf "            [ok] \n"
     else
         echo -e "\n==> k3s not installed"
     fi
