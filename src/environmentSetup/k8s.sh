@@ -142,19 +142,6 @@ printf "\r==> Check and load Helm repositories    "
   printf "            [ok]\n"
 }
 
-
-# function helm_repo_list_setup {
-#     check_and_load_helm_repos 
-#     printf "\r==> add the helm repos required to install and run infrastructure for vNext, Paymenthub EE and MifosX\n"
-#     su - "$k8s_user" -c "helm repo add kiwigrid https://kiwigrid.github.io" > /dev/null 2>&1
-#     su - "$k8s_user" -c "helm repo add kokuwa https://kokuwaio.github.io/helm-charts" > /dev/null 2>&1
-#     su - "$k8s_user" -c "helm repo add codecentric https://codecentric.github.io/helm-charts" > /dev/null 2>&1
-#     su - "$k8s_user" -c "helm repo add bitnami https://charts.bitnami.com/bitnami" > /dev/null 2>&1
-#     su - "$k8s_user" -c "helm repo add cowboysysop https://cowboysysop.github.io/charts/" > /dev/null 2>&1
-#     su - "$k8s_user" -c "helm repo add redpanda-data https://charts.redpanda.com/" > /dev/null 2>&1
-#     su - "$k8s_user" -c "helm repo update" > /dev/null 2>&1
-# }
-
 #------------------------------------------------------------------------------
 # Description: Install NGINX ingress controller in a local cluster using Helm 
 #              if not already installed. Wait for it to be running.   

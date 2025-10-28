@@ -223,3 +223,23 @@ function envSetupMain {
     fi
 } 
 
+# Getting rid of the fsnotify too many open files errors for local k3s install do this 
+# # 1. Automate Kernel Parameter Configuration
+# echo "Configuring Linux kernel parameters for K3s..."
+
+# sudo tee /etc/sysctl.d/99-k3s.conf <<EOF
+# fs.inotify.max_user_watches = 524288
+# fs.inotify.max_user_instances = 1024
+# fs.file-max = 2097152
+# EOF
+
+# # Load the new settings immediately
+# sudo sysctl --system
+
+# # 2. Install K3s (This command will install and start the service)
+# echo "Installing K3s..."
+# curl -sfL https://get.k3s.io | sh -
+
+# # 3. Verify K3s status
+# echo "K3s installation complete. Checking status..."
+# sudo systemctl status k3s --no-pager
