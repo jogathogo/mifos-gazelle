@@ -9,14 +9,11 @@ function deployPH(){
     if [[ "$redeploy" == "false" ]]; then
       echo "    $PH_RELEASE_NAME is already deployed. Skipping deployment."
       return 0
-    else # need to delete prior to redeploy 
-      deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-      #deleteResourcesInNamespaceMatchingPattern "default"  #just removes prometheus at the moment and so is probably not needed
-      manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
-      # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine/charts/*tgz"
-      # rm -f "$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle/charts/*tgz"
-    fi
+    fi 
   fi 
+  # We are deploying or redeploying => make sure things are cleaned up first
+  deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
+  manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
   echo "==> Deploying PaymentHub EE"
   createNamespace "$PH_NAMESPACE"
   #checkPHEEDependencies
@@ -53,12 +50,12 @@ function preparePaymentHubChart(){
       local actual=$(find "$chartPath/charts" -maxdepth 1 -name '*.tgz' 2>/dev/null | wc -l)
 
       if [[ $actual -ge $expected && $expected -gt 0 ]]; then
-        su - $k8s_user -c "cd $chartPath && helm dep build" >> /dev/null 2>&1
+        run_as_user "cd $chartPath && helm dep build" >> /dev/null 2>&1
       else
-        su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
+        run_as_user  "cd $chartPath && helm dep update" >> /dev/null 2>&1
       fi
     else
-      su - $k8s_user -c "cd $chartPath && helm dep update" >> /dev/null 2>&1
+      run_as_user  "cd $chartPath && helm dep update" >> /dev/null 2>&1
     fi
 
     # TODO  is this needed ??

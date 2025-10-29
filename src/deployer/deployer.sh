@@ -41,9 +41,9 @@ function cloneRepo() {
   fi
 
   # Clone the repository
-  git clone -b "$branch" "$repo_link" "$repo_path" >/dev/null 2>&1
+  run_as_user "git clone -b \"$branch\" \"$repo_link\" \"$repo_path\" " >/dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo "Repository $repo_path cloned successfully."
+    echo "      Repository $repo_path cloned successfully."
   else
     echo "Failed to clone $repo_link to $repo_path."
     return 1
@@ -86,9 +86,7 @@ function deleteResourcesInNamespaceMatchingPattern() {
 
         # Delete the namespace (this removes all resources within it)
         #printf "    deleting namespace and resources                [%s]"  $namespace
-        if ! run_as_user "kubectl delete ns \"$namespace\"" >> /dev/null 2>&1 ; then
-#
-#        else
+        if ! run_as_user "kubectl delete ns \"$namespace\" --ignore-not-found=true" >> /dev/null 2>&1 ; then
             echo " [FAILED]"
             echo "Failed to delete namespace $namespace. Check logs for details."
             exit_code=1

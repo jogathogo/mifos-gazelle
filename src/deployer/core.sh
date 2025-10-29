@@ -72,10 +72,12 @@ function is_app_running() {
         return 1
     }
     
-    # Get all pods
-    local pod_list total_pods ready_count
-    pod_list=$(run_as_user "kubectl get pod -n \"$namespace\" --no-headers -o wide")
+    local raw_output
+    raw_output=$(run_as_user "kubectl get pod -n \"$namespace\" --no-headers -o wide")
     local exit_code=$?
+
+    # Strip any lines that look like debug/command echo (e.g., "DEBUG Running as ...")
+    pod_list=$(echo "$raw_output" | grep -v 'DEBUG' | grep -v "kubectl" || true)
     
     # Count total pods and ready pods
     total_pods=$(echo "$pod_list" | grep -c '^')
