@@ -45,11 +45,11 @@ function install_k3s {
 }
 
 function check_nginx_running {
-    nginx_pod_name=$(run_as_user "kubectl get pods -n ingress-nginx --no-headers -o custom-columns=\":metadata.name\"" | grep nginx | head -n 1)
+    nginx_pod_name=$(run_as_user "kubectl get pods -n default --no-headers -o custom-columns=\":metadata.name\"" | grep nginx | head -n 1)
     if [ -z "$nginx_pod_name" ]; then
         return 1
     fi
-    pod_status=$(run_as_user "kubectl get pod -n ingress-nginx \"$nginx_pod_name\" -o jsonpath='{.status.phase}'")
+    pod_status=$(run_as_user "kubectl get pod -n default \"$nginx_pod_name\" -o jsonpath='{.status.phase}'")
     if [ "$pod_status" == "Running" ]; then
         return 0
     else
@@ -146,7 +146,9 @@ printf "\r==> Check and load Helm repositories    "
 # Description: Install NGINX ingress controller in a local cluster using Helm 
 #              if not already installed. Wait for it to be running.   
 #------------------------------------------------------------------------------ 
-            # Currently in dev branch 
+            # DEBUG TODO: figure out exactly how nginx is to be installed
+            # seems like havin it in its own namespace is a good idea for local cluster 
+            # Currently this is what is in dev branch 
             # su - $k8s_user -c "helm delete ingress-nginx -n default " > /dev/null 2>&1
             # su - $k8s_user -c "helm install --wait --timeout 1200s ingress-nginx ingress-nginx \
             #                   --repo https://kubernetes.github.io/ingress-nginx \
@@ -154,12 +156,10 @@ printf "\r==> Check and load Helm repositories    "
 function install_nginx_local_cluster {
     printf "\r==> Installing NGINX to local cluster "
     if ! check_nginx_running; then 
-        run_as_user  "helm delete ingress-nginx -n ingress-nginx" > /dev/null 2>&1
-        run_as_user  "helm install ingress-nginx ingress-nginx/ingress-nginx \
-                            --create-namespace --namespace ingress-nginx \
-                            --set controller.service.type=NodePort \
-                            --wait --timeout 1200s \
-                            -f $NGINX_VALUES_FILE" > /dev/null 2>&1
+        run_as_user  "helm delete ingress-nginx -n default " #> /dev/null 2>&1
+        run_as_user  "helm install --wait --timeout 1200s ingress-nginx ingress-nginx \
+                            --repo https://kubernetes.github.io/ingress-nginx \
+                            -n default -f $NGINX_VALUES_FILE" # > /dev/null 2>&1
     fi 
     if check_nginx_running; then 
         printf "              [ok]\n"

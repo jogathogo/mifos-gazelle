@@ -211,6 +211,10 @@ function envSetupMain {
     check_os_ok  
     install_os_prerequisites
     install_k8s_tools
+    configure_k8s_user_env
+    install_nginx_local_cluster
+    get_ingress_ip 
+    exit 1 
 
     if [[ "$environment" == "local" ]]; then
         envSetupLocalCluster "$mode"
