@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # vnext.sh -- Mifos Gazelle deployer script for vNext Beta 1 switch 
+
+#------------------------------------------------------------------------------
+# Function : deployvNext
+# Description: Deploys Mojaloop vNext using Kubernetes manifests.
+#------------------------------------------------------------------------------
 function deployvNext() {
   printf "\n==> Deploying Mojaloop vNext application \n"
   
@@ -28,15 +33,20 @@ function deployvNext() {
       echo -e "    Proceeding ..."
     fi
   done
-  ## don't do this by default for gazelle v1.1.0 as for v1.1.0 we now have Mifos greenbank/bluebank as much more realistic DFSPs 
-  ## It is true that in for vNext or subseqent we might want TTKs for debug and testing purposes hence leaving this here for the moment
-  ## vnext_configure_ttk $VNEXT_TTK_FILES_DIR  $VNEXT_NAMESPACE   # configure in the TTKs as participants 
 
   echo -e "\n${GREEN}============================"
   echo -e "vnext Deployed"
   echo -e "============================${RESET}\n"
 }
 
+#------------------------------------------------------------------------------
+# Function : vnext_restore_demo_data
+# Description: Restores demonstration/test data into vNext MongoDB from a dump file.
+# Parameters:
+#   $1 - Directory containing the MongoDB dump file.
+#   $2 - Name of the MongoDB dump file (e.g., mongodump.gz).
+#   $3 - Kubernetes namespace where vNext is deployed.
+#------------------------------------------------------------------------------
 function vnext_restore_demo_data {
     local mongo_data_dir="$1"
     local mongo_dump_file="$2"
@@ -102,27 +112,15 @@ function vnext_restore_demo_data {
     printf " [ ok ]\n"
 }
 
-# function vnext_restore_demo_data {
-#   local mongo_data_dir=$1
-#   local mongo_dump_file=$2
-#   local namespace=$3 
-#   printf "    restoring vNext mongodb demonstration/test data "
-#   mongopod=`kubectl get pods --namespace $namespace | grep -i mongodb |awk '{print $1}'` 
-#   mongo_root_pw=`kubectl get secret --namespace $namespace  mongodb  -o jsonpath='{.data.MONGO_INITDB_ROOT_PASSWORD}'| base64 -d` 
-#   if [[ -z "$mongo_root_pw" ]]; then
-#     echo -e "${RED}   Restore Failed to retrieve MongoDB root password from secret in namespace '$namespace'${RESET}" 
-#     return 1
-#   fi
-#   kubectl cp  $mongo_data_dir/$mongo_dump_file $mongopod:/tmp/mongodump.gz  --namespace $namespace  >/dev/null 2>&1 # copy the demo / test data into the mongodb pod
-#   # Execute mongorestore
-#   if ! kubectl exec --namespace "$namespace" --stdin --tty "$mongopod" -- mongorestore -u root -p "$mongo_root_pw" \
-#       --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin >/dev/null 2>&1; then
-#     echo -e "${RED}   mongorestore command failed ${RESET}" 
-#     return 1
-#   fi
-#   printf " [ ok ] \n"
-# }
-
+#------------------------------------------------------------------------------
+# NOTE: this is not used in Gazelle v1.1.0 but may be useful in future releases
+# Function : vnext_configure_ttk
+# Description: Configures the Testing Toolkit (TTK) in the vNext deployment by copying
+#              necessary environment and specification files into the TTK pods.
+# Parameters:
+#   $1 - Directory containing the TTK files to be copied.
+#   $2 - Kubernetes namespace where vNext is deployed.
+#------------------------------------------------------------------------------
 function vnext_configure_ttk {
   local ttk_files_dir=$1
   local namespace=$2

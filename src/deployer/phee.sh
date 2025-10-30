@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # phee.sh -- Mifos Gazelle deployer script for PaymentHub EE 
 
+#------------------------------------------------------------------------------
+# Function : deployPH
+# Description: Deploys PaymentHub EE using Helm charts.
+#------------------------------------------------------------------------------
 function deployPH(){
   # TODO make this a global variable
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
@@ -30,6 +34,7 @@ function deployPH(){
   
   # bomns_to_deploy is the number of BPMS in the orchestration/feel directory
   local bpmns_to_deploy=$(ls -l "$BASE_DIR/orchestration/feel"/*.bpmn | wc -l) 
+  echo "    BPMNs to deploy count is $bpmns_to_deploy"
   if are_bpmns_loaded $bpmns_to_deploy ; then
     echo "    BPMN diagrams are already loaded - skipping load "
   else
@@ -39,7 +44,10 @@ function deployPH(){
   echo -e "Paymenthub Deployed"
   echo -e "============================${RESET}\n"
 }
-
+#------------------------------------------------------------------------------
+# Function : preparePaymentHubChart
+# Description: Prepares the PaymentHub EE Helm chart by ensuring dependencies are met.
+#------------------------------------------------------------------------------
 function preparePaymentHubChart(){
   # Clone the repositories
   cloneRepo "$PHBRANCH" "$PH_REPO_LINK" "$APPS_DIR" "$PHREPO_DIR"  # needed for kibana and elastic secrets only 
@@ -79,27 +87,14 @@ function preparePaymentHubChart(){
   ensureHelmDeps "$gazelleChartPath"
 }
 
-# function checkPHEEDependencies() {
-#   # for Gazelle we might not need this 
-#   printf "    Installing Prometheus " 
-#   # Install Prometheus Operator if needed as it is a PHEE dependency
-#   local deployment_name="prometheus-operator"
-#   # deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' > /dev/null 2>&1)
-#   deployment_available=$(kubectl get deployment "$deployment_name" -n "default" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null)
-#   if [[ "$deployment_available" == "True" ]]; then
-#     echo -e "${RED} prometheus already installed -skipping install. ${RESET}" 
-#     return 0
-#   fi
-#   LATEST=$(curl -s https://api.github.com/repos/prometheus-operator/prometheus-operator/releases/latest | jq -cr .tag_name)
-#   su - $k8s_user -c "curl -sL https://github.com/prometheus-operator/prometheus-operator/releases/download/${LATEST}/bundle.yaml | kubectl create -f - " >/dev/null 2>&1
-#   if [ $? -eq 0 ]; then
-#       echo " [ok] "
-#   else
-#       echo "   Failed to install prometheus"
-#       exit 1 
-#   fi
-# }
-
+#------------------------------------------------------------------------------
+# Function : deployPhHelmChartFromDir
+# Description: Deploys a Helm chart for PaymentHub EE from a specified directory.
+# Parameters:
+#   $1 - Namespace to deploy to
+#   $2 - Directory containing the Helm chart
+#   $3 - (Optional) Values file for the Helm chart
+#------------------------------------------------------------------------------
 function deployPhHelmChartFromDir(){
   # Parameters
   local namespace="$1"
@@ -140,6 +135,10 @@ function deployPhHelmChartFromDir(){
   fi
 }
 
+#------------------------------------------------------------------------------
+# Function : deployBPMS
+# Description: Deploys BPMN diagrams to Zeebe Operate.
+#------------------------------------------------------------------------------
 deployBPMS() {
   local host="https://zeebeops.mifos.gazelle.test/zeebe/upload"
   local DEBUG=false
@@ -186,6 +185,7 @@ deployBPMS() {
   fi
 }
 
+
 #------------------------------------------------------------------------------
 # Function: are_bpmns_loaded
 # Description: Checks if the required number of BPMN diagrams are loaded in Zeebe Operate.
@@ -195,17 +195,28 @@ deployBPMS() {
 #   0 if the required number of BPMNs are loaded, 1 otherwise.
 #------------------------------------------------------------------------------
 are_bpmns_loaded() {
-    local MIN_REQUIRED=${1:-1}  # Default: 1 if not provided
-    local OPERATE_URL="https://zeebe-operate.mifos.gazelle.test"
-    local USER="demo"
-    local PASS="demo"
+    local MIN_REQUIRED=${1:-1}
+    ES_URL="http://elasticsearch.mifos.gazelle.test"
+    INDEX="zeebe-record_process_8.2.12_2025-10-30"
 
-    local COUNT=$(curl -sk -u "$USER:$PASS" \
-        -H "Content-Type: application/json" \
-        -d '{}' \
-        "$OPERATE_URL/v1/process-definitions/search" 2>/dev/null | \
-        jq -r '.processDefinitions | length // 0')
+    local COUNT=$(curl -s "$ES_URL/$INDEX/_search" \
+        -H 'Content-Type: application/json' \
+        -d '{
+          "size": 0,
+          "query": { "term": { "valueType": "PROCESS" } },
+          "aggs": {
+            "by_bpmn_id": {
+              "composite": {
+                "size": 1000,
+                "sources": [ { "bpmn_id": { "terms": { "field": "value.bpmnProcessId" } } } ]
+              },
+              "aggs": { "latest_version": { "max": { "field": "value.version" } } }
+            }
+          }
+        }' 2>/dev/null | jq -r '.aggregations.by_bpmn_id.buckets | length // 0')
 
-    # Return 0 (true) if COUNT >= MIN_REQUIRED, else 1 (false)
+    [[ "$COUNT" =~ ^[0-9]+$ ]] || { echo "[$(date +%T)] ERROR: ES query failed" >&2; return 1; }
+
+    echo "    Unique BPMNs already deployed: $COUNT " >&2
     (( COUNT >= MIN_REQUIRED )) && return 0 || return 1
 }
