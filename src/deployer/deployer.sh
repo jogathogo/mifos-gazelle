@@ -25,7 +25,7 @@ function cloneRepo() {
   local repo_path="$target_directory/$cloned_directory_name"
 
   # Create target directory if it doesn't exist
-  mkdir -p "$target_directory"
+  run_as_user "mkdir -p \"$target_directory\" " >/dev/null 2>&1
 
   # Check if repository and branch exist
   if [ -d "$repo_path" ]; then
@@ -248,21 +248,6 @@ function applyKubeManifests() {
       fi
     done
 }
-
-# function addKubeConfig() {
-#   local K8sConfigDir="$k8s_user_home/.kube"
-
-#   if [ ! -d "$K8sConfigDir" ]; then
-#       run_as_user "mkdir -p $K8sConfigDir"
-#       check_command_execution $? "mkdir -p $K8sConfigDir"
-#       echo "K8sConfigDir created: $K8sConfigDir"
-#   else
-#       echo "K8sConfigDir already exists: $K8sConfigDir"
-#   fi
-  
-#   run_as_user "cp $k8s_user_home/k3s.yaml $K8sConfigDir/config"
-#   check_command_execution $? "cp $k8s_user_home/k3s.yaml $K8sConfigDir/config"
-# }
 
 #------------------------------------------------------------
 # Description : Placeholder for vNext application testing logic.

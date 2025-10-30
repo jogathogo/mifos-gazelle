@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # kubernetes specific functions 
 
+#------------------------------------------------------------------------------
 # Checks K3s status and returns 0 for 'pass' or 1 for failure.
 # based on k3s check-config output parsing and removing ANSI escape codes if any
 # note this isn't used for k3s cluster health checking just installation verification
+#------------------------------------------------------------------------------
 function check_k3s_cluster_status {
     status=$(
         k3s check-config 2>/dev/null | 
@@ -17,6 +19,9 @@ function check_k3s_cluster_status {
     fi
 }
 
+#------------------------------------------------------------------------------
+# Install k3s lightweight Kubernetes cluster
+#------------------------------------------------------------------------------
 function install_k3s {
     # TODO check this i.e. do we need to remove old kube config like this 
     rm -rf "$k8s_user_home/.kube" >> /dev/null 2>&1
@@ -44,6 +49,10 @@ function install_k3s {
 
 }
 
+#------------------------------------------------------------------------------
+# Function: deployPhHelmChartFromDir
+# Description: Deploys a Helm chart from a specified directory into a given namespace.
+#------------------------------------------------------------------------------
 function check_nginx_running {
     nginx_pod_name=$(run_as_user "kubectl get pods -n default --no-headers -o custom-columns=\":metadata.name\"" | grep nginx | head -n 1)
     if [ -z "$nginx_pod_name" ]; then
@@ -57,6 +66,10 @@ function check_nginx_running {
     fi
 }
 
+#------------------------------------------------------------------------------
+# Function: get_ingress_ip
+# Description: Retrieves and displays the external IP or hostname of the NGINX Ingress Controller
+#------------------------------------------------------------------------------
 function get_ingress_ip {
     ingress_ip=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
     if [ -z "$ingress_ip" ]; then
@@ -146,13 +159,6 @@ printf "\r==> Check and load Helm repositories    "
 # Description: Install NGINX ingress controller in a local cluster using Helm 
 #              if not already installed. Wait for it to be running.   
 #------------------------------------------------------------------------------ 
-            # DEBUG TODO: figure out exactly how nginx is to be installed
-            # seems like havin it in its own namespace is a good idea for local cluster 
-            # Currently this is what is in dev branch 
-            # su - $k8s_user -c "helm delete ingress-nginx -n default " > /dev/null 2>&1
-            # su - $k8s_user -c "helm install --wait --timeout 1200s ingress-nginx ingress-nginx \
-            #                   --repo https://kubernetes.github.io/ingress-nginx \
-            #                   -n default -f $NGINX_VALUES_FILE" > /dev/null 2>&1
 function install_nginx_local_cluster {
     printf "\r==> Installing NGINX to local cluster "
     if ! check_nginx_running; then 
@@ -169,6 +175,9 @@ function install_nginx_local_cluster {
     fi
 }
 
+#------------------------------------------------------------------------------
+# Install k8s related tools if not already installed
+#------------------------------------------------------------------------------
 function install_k8s_tools {
     printf "\r==> Checking and installing Kubernetes tools     "
 
@@ -245,7 +254,10 @@ function install_k8s_tools {
 }
 
 
-
+#------------------------------------------------------------------------------
+# Function : report_cluster_info
+# Description: Reports basic information about the Kubernetes cluster.
+#------------------------------------------------------------------------------
 function report_cluster_info {
     #export KUBECONFIG="$kubeconfig_path"
     num_nodes=$(kubectl get nodes --no-headers | wc -l)

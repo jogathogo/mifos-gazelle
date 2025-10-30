@@ -12,6 +12,7 @@ function deployPH(){
     fi 
   fi 
   # We are deploying or redeploying => make sure things are cleaned up first
+  printf "    Redeploying paymenthub : Deleting existing resources in namespace %s\n" "$PH_NAMESPACE"
   deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
   manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
   echo "==> Deploying PaymentHub EE"
@@ -25,9 +26,15 @@ function deployPH(){
   
   # now deploy the helm chart 
   deployPhHelmChartFromDir "$PH_NAMESPACE" "$gazelleChartPath" "$PH_VALUES_FILE"
-  # now load the BPMS diagrams we do it here not in the helm chart so that 
-  # we can count the sucessful BPMN uploads and be confident that they are working 
-  #deployBPMS
+  # now load the BPMS diagrams if they are not already loaded 
+  
+  # bomns_to_deploy is the number of BPMS in the orchestration/feel directory
+  local bpmns_to_deploy=$(ls -l "$BASE_DIR/orchestration/feel"/*.bpmn | wc -l) 
+  if are_bpmns_loaded $bpmns_to_deploy ; then
+    echo "    BPMN diagrams are already loaded - skipping load "
+  else
+    deployBPMS
+  fi
   echo -e "\n${GREEN}============================"
   echo -e "Paymenthub Deployed"
   echo -e "============================${RESET}\n"
@@ -177,4 +184,28 @@ deployBPMS() {
     echo -e "${RED}Warning: there was an issue deploying the BPMN diagrams."
     echo -e "         run ./src/utils/deployBpmn-gazelle.sh to investigate${RESET}"
   fi
+}
+
+#------------------------------------------------------------------------------
+# Function: are_bpmns_loaded
+# Description: Checks if the required number of BPMN diagrams are loaded in Zeebe Operate.
+# Parameters:
+#   $1 - Minimum required number of BPMNs (default: 1)
+# Returns:
+#   0 if the required number of BPMNs are loaded, 1 otherwise.
+#------------------------------------------------------------------------------
+are_bpmns_loaded() {
+    local MIN_REQUIRED=${1:-1}  # Default: 1 if not provided
+    local OPERATE_URL="https://zeebe-operate.mifos.gazelle.test"
+    local USER="demo"
+    local PASS="demo"
+
+    local COUNT=$(curl -sk -u "$USER:$PASS" \
+        -H "Content-Type: application/json" \
+        -d '{}' \
+        "$OPERATE_URL/v1/process-definitions/search" 2>/dev/null | \
+        jq -r '.processDefinitions | length // 0')
+
+    # Return 0 (true) if COUNT >= MIN_REQUIRED, else 1 (false)
+    (( COUNT >= MIN_REQUIRED )) && return 0 || return 1
 }

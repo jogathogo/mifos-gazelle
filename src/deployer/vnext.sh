@@ -7,12 +7,12 @@ function deployvNext() {
     if [[ "$redeploy" == "false" ]]; then
       echo "    vNext application is already deployed. Skipping deployment."
       return
-    else # need to delete prior to redeploy 
-      printf "    Redeploying vNext: Deleting existing resources in namespace %s\n" "$VNEXT_NAMESPACE"
-      deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
     fi
   fi 
 
+  # We are deploying or redeploying => make sure things are cleaned up first
+  printf "    Redeploying vNext: Deleting existing resources in namespace %s\n" "$VNEXT_NAMESPACE"
+  deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
   createNamespace "$VNEXT_NAMESPACE"
   cloneRepo "$VNEXTBRANCH" "$VNEXT_REPO_LINK" "$APPS_DIR" "$VNEXTREPO_DIR"
   # remove the TTK-CLI pod as it is not needed and comes up in error mode 
