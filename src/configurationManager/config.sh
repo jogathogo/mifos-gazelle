@@ -2,6 +2,7 @@
 
 ########################################################################
 # GLOBAL VARS
+# these are not user configurables - for internal script use only
 ########################################################################
 BASE_DIR=$( cd $(dirname "$0") ; pwd )
 APPS_DIR="$BASE_DIR/repos"
@@ -13,18 +14,13 @@ NGINX_VALUES_FILE="$CONFIG_DIR/nginx_values.yaml"
 # Mojaloop vNext 
 # for gazelle 1.1.0 we have removed the ttk layer as it is not needed as we have MifosX instance integrated as DFSPs 
 VNEXT_LAYER_DIRS=("$APPS_DIR/vnext/packages/installer/manifests/crosscut" "$APPS_DIR/vnext/packages/installer/manifests/apps" "$APPS_DIR/vnext/packages/installer/manifests/reporting")
-VNEXT_VALUES_FILE="$CONFIG_DIR/vnext_values.json"
-# VNEXT_VALUES_FILE="$CONFIG_DIR/vnext_values.json"
-# => use CONFIG_DIR mongodb dump for gazelle 1.1.0 VNEXT_MONGODB_DATA_DIR="$APPS_DIR/$VNEXTREPO_DIR/packages/deployment/docker-compose-apps/ttk_files/mongodb"
-# => not used for v1.1.0 VNEXT_TTK_FILES_DIR="$APPS_DIR/$VNEXTREPO_DIR/packages/deployment/docker-compose-apps/ttk_files"
+#VNEXT_VALUES_FILE="$CONFIG_DIR/vnext_values.json"
 
 #PaymentHub EE 
 PH_VALUES_FILE="$CONFIG_DIR/ph_values.yaml"
 
-# MySQL Connection Details
-# MYSQL_USER="root"
-# MYSQL_PASSWORD="ethieTieCh8ahv"
-SQL_FILE="$BASE_DIR/src/deployer/setup.sql"
+# Database setup script
+# SQL_FILE="$BASE_DIR/src/deployer/setup.sql"
 
 #MifosX 
 MIFOSX_MANIFESTS_DIR="$APPS_DIR/mifosx/kubernetes/manifests"
@@ -64,6 +60,7 @@ function replaceValuesInFiles() {
                 local changed=false
                 for old_value in "${!replacements[@]}"; do
                     if grep -q "$old_value" "$file"; then
+                        echo "Replacing '$old_value' with '${replacements[$old_value]}' in file '$file'"
                         #sed -i "s|$old_value|${replacements[$old_value]}|g" "$file"
                         #sed -i "s|.*$old_value.*|${replacements[$old_value]}|g" "$file"
                         sed -i "s|^\(.*\)$old_value.*|\1${replacements[$old_value]}|g" "$file"
@@ -80,8 +77,13 @@ function replaceValuesInFiles() {
     done
 }
 
+#------------------------------------------------------------------------------
+# Function : configurevNext
+# Description: Configures vNext manifests by replacing placeholder values 
+#              and adjusting settings.
+# Parameters: None
+#------------------------------------------------------------------------------
 function configurevNext() {
-    #TODO this needs a for loop 
   replaceValuesInFiles "${VNEXT_LAYER_DIRS[0]}" "${VNEXT_LAYER_DIRS[1]}" "${VNEXT_LAYER_DIRS[2]}"
   # Iterate over each directory in VNEXT_LAYER_DIRS
   for dir in "${VNEXT_LAYER_DIRS[@]}"; do
@@ -90,14 +92,14 @@ function configurevNext() {
       # Perform the in-place substitution for ingressClassName
       perl -pi -e 's/ingressClassName:\s*nginx-ext/ingressClassName: nginx/' "$file"
       
-      # Perform the in-place substitution for domain name .local to mifos.gazelle.test
-      perl -pi -e 's/- host:\s*(\S+)\.local/- host: $1.mifos.gazelle.test/' "$file"
-      perl -pi -e 's/(\S+)bank\.local/$1bank.mifos.gazelle.test/' "$file"
+    #   # Perform the in-place substitution for domain name .local to mifos.gazelle.test
+    #   perl -pi -e 's/- host:\s*(\S+)\.local/- host: $1.mifos.gazelle.test/' "$file"
+    #   perl -pi -e 's/(\S+)bank\.local/$1bank.mifos.gazelle.test/' "$file"
 
     done
-  done
+ done
 }
 
-function configureMifosx(){
-  echo -e "${BLUE}Configuring MifosX ${RESET}"
-}
+# function configureMifosx(){
+#   echo -e "${BLUE}Configuring MifosX ${RESET}"
+# }

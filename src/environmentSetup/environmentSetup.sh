@@ -41,27 +41,59 @@ function install_os_prerequisites {
 function add_hosts {
     if [[ "$environment" == "local" ]]; then
         printf "==> Mifos-gazelle: update local hosts file  "
-        VNEXTHOSTS=( mongohost.mifos.gazelle.test mongo-express.mifos.gazelle.test \
-                     vnextadmin.mifos.gazelle.test kafkaconsole.mifos.gazelle.test elasticsearch.mifos.gazelle.test redpanda-console.mifos.gazelle.test \
-                     fspiop.mifos.gazelle.test bluebank.mifos.gazelle.test greenbank.mifos.gazelle.test \
-                     bluebank-specapi.mifos.gazelle.test greenbank-specapi.mifos.gazelle.test )
-        PHEEHOSTS=( ops.mifos.gazelle.test ops-bk.mifos.gazelle.test \
-                    bulk-connector.mifos.gazelle.test messagegateway.mifos.gazelle.test \
-                    minio-console.mifos.gazelle.test bill-pay.mifos.gazelle.test channel.mifos.gazelle.test \
-                    channel-gsma.mifos.gazelle.test crm.mifos.gazelle.test mockpayment.mifos.gazelle.test \
-                    mojaloop.mifos.gazelle.test identity-mapper.mifos.gazelle.test vouchers.mifos.gazelle.test \
-                    zeebeops.mifos.gazelle.test zeebe-operate.mifos.gazelle.test zeebe-gateway.mifos.gazelle.test \
-                    elastic-phee.mifos.gazelle.test kibana-phee.mifos.gazelle.test notifications.mifos.gazelle.test )
-        MIFOSXHOSTS=( mifos.mifos.gazelle.test fineract.mifos.gazelle.test )
+        
+        # Use GAZELLE_DOMAIN variable, with fallback to default
+        DOMAIN="${GAZELLE_DOMAIN:-mifos.gazelle.test}"
+        
+        VNEXTHOSTS=( mongohost.$DOMAIN mongo-express.$DOMAIN \
+        vnextadmin.$DOMAIN kafkaconsole.$DOMAIN elasticsearch.$DOMAIN redpanda-console.$DOMAIN \
+        fspiop.$DOMAIN bluebank.$DOMAIN greenbank.$DOMAIN \
+        bluebank-specapi.$DOMAIN greenbank-specapi.$DOMAIN )
+        
+        PHEEHOSTS=( ops.$DOMAIN ops-bk.$DOMAIN \
+        bulk-connector.$DOMAIN messagegateway.$DOMAIN \
+        minio-console.$DOMAIN bill-pay.$DOMAIN channel.$DOMAIN \
+        channel-gsma.$DOMAIN crm.$DOMAIN mockpayment.$DOMAIN \
+        mojaloop.$DOMAIN identity-mapper.$DOMAIN vouchers.$DOMAIN \
+        zeebeops.$DOMAIN zeebe-operate.$DOMAIN zeebe-gateway.$DOMAIN \
+        elastic-phee.$DOMAIN kibana-phee.$DOMAIN notifications.$DOMAIN )
+        
+        MIFOSXHOSTS=( mifos.$DOMAIN fineract.$DOMAIN )
+        
         ALLHOSTS=( "127.0.0.1" "localhost" "${MIFOSXHOSTS[@]}" "${PHEEHOSTS[@]}" "${VNEXTHOSTS[@]}" )
         export ENDPOINTS=`echo ${ALLHOSTS[*]}`
         perl -pi -e 's/^(127\.0\.0\.1\s+)(.*)/$1localhost/' /etc/hosts
         perl -p -i.bak -e 's/127\.0\.0\.1.*localhost.*$/$ENV{ENDPOINTS} /' /etc/hosts
     else
-        printf "==> Skipping /etc/hosts modification for remote environment. Ensure DNS is configured for Mifos Gazelle services.\n"
+        printf "==> Skipping /etc/hosts modification for remote cluster \n"
     fi
     printf "        [ok]\n"
 }
+
+# function add_hosts {
+#     if [[ "$environment" == "local" ]]; then
+#         printf "==> Mifos-gazelle: update local hosts file  "
+#         VNEXTHOSTS=( mongohost.mifos.gazelle.test mongo-express.mifos.gazelle.test \
+#                      vnextadmin.mifos.gazelle.test kafkaconsole.mifos.gazelle.test elasticsearch.mifos.gazelle.test redpanda-console.mifos.gazelle.test \
+#                      fspiop.mifos.gazelle.test bluebank.mifos.gazelle.test greenbank.mifos.gazelle.test \
+#                      bluebank-specapi.mifos.gazelle.test greenbank-specapi.mifos.gazelle.test )
+#         PHEEHOSTS=( ops.mifos.gazelle.test ops-bk.mifos.gazelle.test \
+#                     bulk-connector.mifos.gazelle.test messagegateway.mifos.gazelle.test \
+#                     minio-console.mifos.gazelle.test bill-pay.mifos.gazelle.test channel.mifos.gazelle.test \
+#                     channel-gsma.mifos.gazelle.test crm.mifos.gazelle.test mockpayment.mifos.gazelle.test \
+#                     mojaloop.mifos.gazelle.test identity-mapper.mifos.gazelle.test vouchers.mifos.gazelle.test \
+#                     zeebeops.mifos.gazelle.test zeebe-operate.mifos.gazelle.test zeebe-gateway.mifos.gazelle.test \
+#                     elastic-phee.mifos.gazelle.test kibana-phee.mifos.gazelle.test notifications.mifos.gazelle.test )
+#         MIFOSXHOSTS=( mifos.mifos.gazelle.test fineract.mifos.gazelle.test )
+#         ALLHOSTS=( "127.0.0.1" "localhost" "${MIFOSXHOSTS[@]}" "${PHEEHOSTS[@]}" "${VNEXTHOSTS[@]}" )
+#         export ENDPOINTS=`echo ${ALLHOSTS[*]}`
+#         perl -pi -e 's/^(127\.0\.0\.1\s+)(.*)/$1localhost/' /etc/hosts
+#         perl -p -i.bak -e 's/127\.0\.0\.1.*localhost.*$/$ENV{ENDPOINTS} /' /etc/hosts
+#     else
+#         printf "==> Skipping /etc/hosts modification for remote environment. Ensure DNS is configured for Mifos Gazelle services.\n"
+#     fi
+#     printf "        [ok]\n"
+# }
 
 function delete_k8s_local_cluster {
     printf "    removing local kubernetes cluster   "
@@ -167,8 +199,9 @@ function envSetupLocalCluster {
     if [[ "$mode" == "deploy" ]]; then
         check_resources_ok
         install_os_prerequisites
+        add_hosts
+        
         if ! is_local_cluster_installed; then
-            add_hosts
             install_k3s
             check_and_load_helm_repos
             install_nginx_local_cluster

@@ -22,6 +22,10 @@ function deployvNext() {
   cloneRepo "$VNEXTBRANCH" "$VNEXT_REPO_LINK" "$APPS_DIR" "$VNEXTREPO_DIR"
   # remove the TTK-CLI pod as it is not needed and comes up in error mode 
   rm  -f "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests/ttk/ttk-cli.yaml" > /dev/null 2>&1
+
+  echo "      Updating FQDNs in vNext manifests to use domain $GAZELLE_DOMAIN"
+  update_fqdn_batch "$APPS_DIR/vnext/packages/installer/manifests"  "local" "$GAZELLE_DOMAIN"
+
   configurevNext  # make any local mods to manifests
   vnext_restore_demo_data $CONFIG_DIR "mongodump.gz" $INFRA_NAMESPACE
   for index in "${!VNEXT_LAYER_DIRS[@]}"; do

@@ -8,6 +8,7 @@
 function deployPH(){
   # TODO make this a global variable
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
+  pheeEngineChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
 
   if is_app_running "$PH_NAMESPACE"; then
     if [[ "$redeploy" == "false" ]]; then
@@ -44,6 +45,7 @@ function deployPH(){
   echo -e "Paymenthub Deployed"
   echo -e "============================${RESET}\n"
 }
+
 #------------------------------------------------------------------------------
 # Function : preparePaymentHubChart
 # Description: Prepares the PaymentHub EE Helm chart by ensuring dependencies are met.
@@ -52,6 +54,11 @@ function preparePaymentHubChart(){
   # Clone the repositories
   cloneRepo "$PHBRANCH" "$PH_REPO_LINK" "$APPS_DIR" "$PHREPO_DIR"  # needed for kibana and elastic secrets only 
   cloneRepo "$PH_EE_ENV_TEMPLATE_REPO_BRANCH" "$PH_EE_ENV_TEMPLATE_REPO_LINK" "$APPS_DIR" "$PH_EE_ENV_TEMPLATE_REPO_DIR"
+
+  # Update FQDNs in values file and manifests
+  echo "      Updating FQDNs Helm chart values and manifests to use domain $GAZELLE_DOMAIN"
+  update_fqdn "$PH_VALUES_FILE" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
+  update_fqdn_batch "$APPS_DIR/ph_template"  "mifos.gazelle.test" "$GAZELLE_DOMAIN"
 
   # Helper: choose dep build vs update
   function ensureHelmDeps() {
@@ -73,9 +80,6 @@ function preparePaymentHubChart(){
       run_as_user  "cd $chartPath && helm dep update" >> /dev/null 2>&1
     fi
 
-    # TODO  is this needed ??
-    # Always regenerate repo index
-    #su - $k8s_user -c "cd $chartPath && helm repo index ." >> /dev/null 2>&1
   }
 
   # Run for ph-ee-engine

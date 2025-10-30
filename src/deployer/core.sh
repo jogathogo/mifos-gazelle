@@ -1,51 +1,8 @@
 #!/usr/bin/env bash
-# deployer.sh -- the main Mifos Gazelle deployer script
-
-
-# Check if a pod is running in the specified namespace
-# isPodRunning() {
-#     local podname="$1" namespace="$2"
-#     if [[ -z "$podname" || -z "$namespace" ]]; then
-#         logWithVerboseCheck "$debug" error "Pod name or namespace missing: podname=$podname, namespace=$namespace"
-#         return 1
-#     fi
-#     local pod_status
-#     pod_status=$(run_as_user "kubectl get pod \"$podname\" -n \"$namespace\" -o jsonpath='{.status.phase}' 2>/dev/null")
-#     local exit_code=$?
-#     if [[ $exit_code -ne 0 ]]; then
-#         logWithVerboseCheck "$debug" debug "Pod $podname in namespace $namespace not found or error occurred"
-#         return 1
-#     fi
-#     if [[ "$pod_status" == "Running" ]]; then
-#         logWithVerboseCheck "$debug" debug "Pod $podname in namespace $namespace is Running"
-#         return 0
-#     else
-#         logWithVerboseCheck "$debug" debug "Pod $podname in namespace $namespace is not Running (status: $pod_status)"
-#         return 1
-#     fi
-# }
-
-# isDeployed() {
-#     local app_name="$1" namespace="$2" pod_name="$3" full_pod_name
-
-#     # Check if namespace exists
-#     run_as_user "kubectl get namespace \"$namespace\" "  || return 1
-
-#     # Get the full pod name
-#     full_pod_name=$(run_as_user "kubectl get pods -n \"$namespace\" --no-headers -o custom-columns=\":metadata.name\" | grep -i \"$pod_name\" | head -1")
-
-#     # If no pod found, return false
-#     [[ -z "$full_pod_name" ]] && return 1
-
-#     # Check if the pod is running
-#     if isPodRunning "$full_pod_name" "$namespace"; then
-#         return 0
-#     else
-#         return 1
-#     fi
-# }
+# core.sh -- functios that are core to the deployer script(s)
 
 #------------------------------------------------------
+# Function : is_app_running
 # Description: Check if the application is deployed by 
 # verifying the number of "Ready" pods in a namespace
 #------------------------------------------------------
@@ -103,54 +60,14 @@ function is_app_running() {
     fi
 } # end of is_app_running
 
-
-
-# isDeployed_old() {
-#     local app_name="$1" namespace="$2" pod_name="$3" full_pod_name
-#     kubectl get namespace "$namespace" >/dev/null 2>&1 || { echo "false"; return; }
-#     full_pod_name=$(run_as_user "kubectl get pods -n \"$namespace\" --no-headers -o custom-columns=\":metadata.name\" | grep -i \"$pod_name\" | head -1")
-#     if [[ -z "$full_pod_name" ]]; then
-#         echo "false"
-#         return
-#     fi
-#     if isPodRunning "$full_pod_name" "$namespace"; then
-#         echo "true"
-#     else
-#         echo "false"
-#     fi
-# }
-
-waitForPodReadyByPartialName() {
-  local namespace="$1"
-  local partial_podname="$2"
-  local max_wait_seconds=300
-  local sleep_interval=5
-  local elapsed=0
-  local podname
-
-  while (( elapsed < max_wait_seconds )); do
-    podname=$(kubectl get pods -n "$namespace" --no-headers -o custom-columns=":metadata.name" | grep -i "$partial_podname" | head -1)
-
-    if [[ -n "$podname" ]]; then
-      # Check if pod is Ready (Ready condition == True)
-      local ready_status
-      ready_status=$(kubectl get pod "$podname" -n "$namespace" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
-
-      if [[ "$ready_status" == "True" ]]; then
-        echo "$podname"
-        return 0
-      fi
-    fi
-
-    echo "⏳ Waiting for pod matching '$partial_podname' to be Ready in namespace '$namespace'... ($elapsed seconds elapsed)"
-    sleep "$sleep_interval"
-    ((elapsed+=sleep_interval))
-  done
-
-  echo -e "${RED}    Error: Pod matching '$partial_podname' did not become Ready within 5 minutes.${RESET}" >&2
-  return 1
-}
-
+#------------------------------------------------------------------------------
+# Function : createIngressSecret   
+# Description: Creates a self-signed TLS certificate and stores it as a Kubernetes secret.
+# Parameters: 
+#   $1 - Namespace to create the secret in  
+#   $2 - Domain name for the certificate
+#   $3 - Secret name
+#------------------------------------------------------------------------------
 function createIngressSecret {
     local namespace="$1"
     local domain_name="$2"
@@ -219,6 +136,14 @@ EOF
     fi
 }
 
+#------------------------------------------------------------------------------
+# Function : manageElasticSecrets
+# Description: Creates or deletes Elasticsearch related Kubernetes secrets.
+# Parameters:
+#   $1 - Action: "create" or "delete"
+#   $2 - Namespace where the secrets are managed
+#   $3 - Directory containing the .p12 certificate file
+#------------------------------------------------------------------------------
 function manageElasticSecrets {
     local action="$1"
     local namespace="$2"
@@ -351,47 +276,94 @@ function manageElasticSecrets {
     fi
 }
 
+#------------------------------------------------------------------------------
+# Function to update FQDN in YAML files (Helm values or Kubernetes manifests)
+# Example usage:
+#   update_fqdn "values.yaml" "hostname.mifos.gazelle.test" "hostname.newdomain.com"
+#------------------------------------------------------------------------------
+update_fqdn() {
+    local input_file="$1"
+    local old_fqdn="$2"
+    local new_fqdn="$3"
+    
+    # Validate parameters
+    if [ $# -ne 3 ]; then
+        echo "Error: Invalid number of arguments"
+        echo "Usage: update_fqdn <input_file> <old_fqdn> <new_fqdn>"
+        return 1
+    fi
+    
+    # Check if file exists
+    if [ ! -f "$input_file" ]; then
+        echo "Error: File '$input_file' does not exist"
+        return 1
+    fi
+    
+    # Check if file is writable
+    if [ ! -w "$input_file" ]; then
+        echo "Error: File '$input_file' is not writable"
+        return 1
+    fi
+    
+    # Create backup with timestamp
+    local backup_file="${input_file}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$input_file" "$backup_file"
+    # echo "Created backup: $backup_file"
+    
+    # Escape dots in FQDNs for sed (dots are special characters in regex)
+    local escaped_old_fqdn=$(echo "$old_fqdn" | sed 's/\./\\./g')
+    local escaped_new_fqdn=$(echo "$new_fqdn" | sed 's/\./\\./g')
+    
+    # Perform the replacement in-place
+    sed -i.tmp "s/${escaped_old_fqdn}/${new_fqdn}/g" "$input_file"
+    rm -f "${input_file}.tmp"
+    
+    # Count number of replacements made
+    local changes=$(diff -u "$backup_file" "$input_file" | grep "^[-+]" | grep -v "^[-+][-+][-+]" | wc -l)
+    
+    if [ "$changes" -gt 0 ]; then
+        # echo "Successfully updated $input_file"
+        # echo "Changes made: $((changes / 2)) line(s) modified"
+        # echo ""
+        # echo "Preview of changes:"
+        # diff -u "$backup_file" "$input_file" | head -20
+        rm -f "$backup_file"
+        return 0
+    else
+        echo "No changes made to $input_file (FQDN not found)"
+        rm "$backup_file"  # Remove backup if no changes
+        return 0
+    fi
+    rm -f "$backup_file"
+}
+
+#------------------------------------------------------------------------------
+# Function to update all YAML files in a directory structure
+# Example:
+#   update_fqdn_batch "mydir" "mifos.gazelle.test" "newdomain.com"
+#------------------------------------------------------------------------------
+update_fqdn_batch() {
+    local directory="$1"
+    local old_fqdn="$2"
+    local new_fqdn="$3"
+    
+    find "$directory" -type f \( -name "*.yaml" -o -name "*.yml" \) | while read -r file; do
+        #echo "Processing: $file"
+        update_fqdn "$file" "$old_fqdn" "$new_fqdn"
+        #echo "---"
+    done
+}
 
 
-#create "$PH_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
-# function manageElasticSecrets {
-#     local action="$1"
-#     local namespace="$2"
-#     local certdir="$3" # location of the .p12 and .pem files 
-#     local password="XVYgwycNuEygEEEI0hQF"  
 
-#     # Create a temporary directory to store the generated files
-#     temp_dir=$(mktemp -d)
-
-#     if [[ "$action" == "create" ]]; then
-#       echo "    creating elastic and kibana secrets in namespace $namespace" 
-#       # Convert the certificates and store them in the temporary directory
-#       openssl pkcs12 -nodes -passin pass:'' -in $certdir/elastic-certificates.p12 -out "$temp_dir/elastic-certificate.pem"  >> /dev/null 2>&1
-#       openssl x509 -outform der -in "$certdir/elastic-certificate.pem" -out "$temp_dir/elastic-certificate.crt"  >> /dev/null 2>&1
-
-#       # Create the ES secrets in the specified namespace
-#       kubectl create secret generic elastic-certificates --namespace="$namespace" --from-file="$certdir/elastic-certificates.p12" >> /dev/null 2>&1
-#       kubectl create secret generic elastic-certificate-pem --namespace="$namespace" --from-file="$temp_dir/elastic-certificate.pem" >> /dev/null 2>&1
-#       kubectl create secret generic elastic-certificate-crt --namespace="$namespace" --from-file="$temp_dir/elastic-certificate.crt" >> /dev/null 2>&1
-#       kubectl create secret generic elastic-credentials --namespace="$namespace" --from-literal=password="$password" --from-literal=username=elastic >> /dev/null 2>&1
-
-#       local encryptionkey=MMFI5EFpJnib4MDDbRPuJ1UNIRiHuMud_r_EfBNprx7qVRlO7R 
-#       kubectl create secret generic kibana --namespace="$namespace" --from-literal=encryptionkey=$encryptionkey >> /dev/null 2>&1
-
-#     elif [[ "$action" == "delete" ]]; then
-#       echo "Deleting elastic and kibana secrets" 
-#       # Delete the secrets from the specified namespace
-#       kubectl delete secret elastic-certificates --namespace="$namespace" >> /dev/null 2>&1
-#       kubectl delete secret elastic-certificate-pem --namespace="$namespace" >> /dev/null 2>&1
-#       kubectl delete secret elastic-certificate-crt --namespace="$namespace" >> /dev/null 2>&1
-#       kubectl delete secret elastic-credentials --namespace="$namespace" >> /dev/null 2>&1
-#       kubectl delete secret  kibana --namespace="$namespace" >> /dev/null 2>&1
-#     else
-#       echo "Invalid action. Use 'create' or 'delete'."
-#       rm -rf "$temp_dir"  # Clean up the temporary directory
-#       return 1
-#     fi
-
-#     # Clean up the temporary directory
-#     rm -rf "$temp_dir"
+# Update all Gazelle FQDN references
+# update_gazelle_domain() {
+#     local new_domain="$1"
+#     local old_domain="mifos.gazelle.test"
+    
+#     # Update Helm values
+#     find . -name "values*.yaml" -exec bash -c 'update_fqdn "$0" "'"$old_domain"'" "'"$new_domain"'"' {} \;
+    
+#     # Update Kubernetes manifests
+#     find . -name "*.yaml" -path "*/kubernetes/*" -exec bash -c 'update_fqdn "$0" "'"$old_domain"'" "'"$new_domain"'"' {} \;
 # }

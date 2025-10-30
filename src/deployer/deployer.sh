@@ -32,7 +32,6 @@ function cloneRepo() {
     cd "$repo_path" || return 1
     # Check if specified branch exists locally
     if git show-ref --verify --quiet "refs/heads/$branch"; then
-      #echo "Repository $repo_path with branch $branch is up-to-date."
       return 0
     fi
     # Remove repo if branch doesn't exist
@@ -85,7 +84,6 @@ function deleteResourcesInNamespaceMatchingPattern() {
         fi
 
         # Delete the namespace (this removes all resources within it)
-        #printf "    deleting namespace and resources                [%s]"  $namespace
         if ! run_as_user "kubectl delete ns \"$namespace\" --ignore-not-found=true" >> /dev/null 2>&1 ; then
             echo " [FAILED]"
             echo "Failed to delete namespace $namespace. Check logs for details."
@@ -125,10 +123,6 @@ function deployHelmChartFromDir() {
 
   run_as_user "$helm_cmd" #> /dev/null 2>&1
   check_command_execution $? "$helm_cmd"
-
-  # Verify deployment
-  # local resource_count
-  # resource_count=$(run_as_user "kubectl get pods -n \"$namespace\" --ignore-not-found=true 2>/dev/null | grep -v 'No resources found' | wc -l")
   
   if is_app_running $namespace; then
     echo "Helm chart deployed successfully."
@@ -146,14 +140,12 @@ function deployHelmChartFromDir() {
 #------------------------------------------------------------
 function createNamespace() {
   local namespace=$1
-  
-  #printf "    Creating namespace $namespace "
+
   # Check if the namespace already exists
   if ! run_as_user "kubectl get namespace \"$namespace\"" >> /dev/null 2>&1; then
     # Create the namespace
     run_as_user "kubectl create namespace \"$namespace\"" >> /dev/null 2>&1
     check_command_execution $? "kubectl create namespace $namespace"
-    #printf " [ok] "
   fi
 }
 
@@ -167,9 +159,6 @@ function deployInfrastructure() {
 
   printf "==> Deploying infrastructure \n"
   
-  # local result
-  # result=$(isDeployed "$INFRA_NAMESPACE" 9 )
-  
   if is_app_running  "$INFRA_NAMESPACE"; then
     if [[ "$redeploy" == "false" ]]; then
         echo "    Infrastructure is already deployed. Skipping deployment."
@@ -179,23 +168,15 @@ function deployInfrastructure() {
     fi
   fi
 
-  # if [[ "$result" == "true" ]]; then
-  #     if [[ "$redeploy" == "false" ]]; then
-  #         echo "    Infrastructure is already deployed. Skipping deployment."
-  #         return 0
-  #     else
-  #         deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
-  #     fi
-  # fi
-
   createNamespace "$INFRA_NAMESPACE"
   check_command_execution $? "createNamespace $INFRA_NAMESPACE"
 
+  echo "      Updating FQDNs in INFRA Helm chart values.yaml to use domain $GAZELLE_DOMAIN"
+  update_fqdn "$INFRA_CHART_DIR/values.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
+
   # Update helm dependencies for infra chart
-  #printf "    Updating dependencies for infra helm chart "
   run_as_user "cd $INFRA_CHART_DIR && helm dep update" >> /dev/null 2>&1
   check_command_execution $? "helm dep update for infra chart"
-  #echo " [ok] "
 
   # Deploy infra helm chart
   printf "    Deploying infra helm chart  "
@@ -277,8 +258,6 @@ function test_mifosx() {
   # TODO: Implement testing logic
 }
 
-
-
 #------------------------------------------------------------
 # Description : Prints cleanup end message .
 #------------------------------------------------------------
@@ -289,10 +268,6 @@ Mifos Gazelle "cleanup" commplete
 =================================
 EOF
 }
-
-
-
-
 
 #------------------------------------------------------------
 # Description : Prints final deployment status and access info.

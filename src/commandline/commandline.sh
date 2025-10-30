@@ -8,7 +8,11 @@ source "$RUN_DIR/src/deployer/deployer.sh" || { echo "FATAL: Could not source de
 
 DEFAULT_CONFIG_FILE="$RUN_DIR/config/config.ini"
 
-# Resolve invoking user robustly (handles sudo)
+#------------------------------------------------------------------------------
+# function: resolve_invoker_user
+# Description: Resolves the username of the user who invoked the script,
+#              handling cases where sudo is used.
+#------------------------------------------------------------------------------
 function resolve_invoker_user() {
   if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
     printf '%s\n' "$SUDO_USER"
@@ -24,6 +28,10 @@ function resolve_invoker_user() {
   whoami
 }
 
+#------------------------------------------------------------------------------
+# Function : install_crudini
+# Description: Installs the 'crudini' tool if it is not already installed.
+#------------------------------------------------------------------------------
 function install_crudini() {
     if ! command -v crudini &> /dev/null; then
         logWithLevel "$INFO" "crudini not found. Attempting to install..."
@@ -45,7 +53,12 @@ function install_crudini() {
     fi
 }
 
-# Function to load configuration from the INI file using crudini
+#------------------------------------------------------------------------------
+# Function : loadConfigFromFile
+# Description: Loads configuration parameters from the specified INI file using 'crudini'.
+# Parameters:
+#   $1 - Path to the configuration INI file.
+#------------------------------------------------------------------------------
 function loadConfigFromFile() {
     local config_path="$1"
     logWithLevel "$INFO" "Attempting to load configuration from $config_path using crudini."
@@ -139,6 +152,10 @@ function loadConfigFromFile() {
     done
 }
 
+#------------------------------------------------------------------------------
+# Function : welcome
+# Description: Displays a welcome message for Mifos Gazelle.
+#------------------------------------------------------------------------------
 function welcome {
     echo -e "${BLUE}"
     echo -e " ██████   █████  ███████ ███████ ██      ██      ███████ "
@@ -153,6 +170,10 @@ function welcome {
     echo
 }
 
+#------------------------------------------------------------------------------
+# Function : showUsage
+# Description: Displays usage information for the script.
+#------------------------------------------------------------------------------
 function showUsage {
     echo "
     USAGE: $0 [-f <config_file_path>] -m [mode] -u [user] -a [apps] -e [environment] -d [true/false] -r [true/false]
@@ -176,6 +197,10 @@ function showUsage {
     "
 }
 
+#------------------------------------------------------------------------------
+# Function : validateInputs
+# Description: Validates command-line inputs and configuration parameters.
+#------------------------------------------------------------------------------
 function validateInputs {
     if [[ -z "$mode" || -z "$k8s_user" ]]; then
         echo "Error: Required options -m (mode) and -u (user) must be provided."
@@ -298,6 +323,13 @@ function validateInputs {
     fi
 } #validateInputs
 
+#------------------------------------------------------------------------------
+# Function : getOptions
+# Description: Parses command-line options and populates a map with the values.
+# Parameters:
+#   $1 - Name of the associative array to populate with options.
+#   Remaining parameters - Command-line arguments to parse.
+#------------------------------------------------------------------------------
 function getOptions() {
     local -n options_map=$1
     shift
@@ -321,12 +353,20 @@ function getOptions() {
     done
 }
 
+#------------------------------------------------------------------------------
+# Function : cleanUp
+# Description: Performs graceful cleanup on script exit.
+#------------------------------------------------------------------------------
 function cleanUp() {
     echo -e "${RED}Performing graceful clean up${RESET}"
     echo "Exiting via cleanUp function"
     exit 2
 }
 
+#------------------------------------------------------------------------------
+# Function : trapCtrlc
+# Description: Handles Ctrl-C (SIGINT) signal to perform cleanup.
+#------------------------------------------------------------------------------
 function trapCtrlc {
     echo
     echo -e "${RED}Ctrl-C caught...${RESET}"
