@@ -276,12 +276,71 @@ function manageElasticSecrets {
     fi
 }
 
+#!/bin/bash
+
+# Function to update FQDN in YAML files (Helm values or Kubernetes manifests)
+#!/bin/bash
+
+update_fqdn() {
+    local input_file="$1"
+    local old_fqdn="$2"
+    local new_fqdn="$3"
+    
+    # Validate parameters
+    if [ $# -ne 3 ]; then
+        echo "Error: Invalid number of arguments"
+        echo "Usage: update_fqdn <input_file> <old_fqdn> <new_fqdn>"
+        return 1
+    fi
+    
+    # Check if file exists
+    if [ ! -f "$input_file" ]; then
+        echo "Error: File '$input_file' does not exist"
+        return 1
+    fi
+    
+    # Check if file is writable
+    if [ ! -w "$input_file" ]; then
+        echo "Error: File '$input_file' is not writable"
+        return 1
+    fi
+    
+    # Create backup with timestamp
+    local backup_file="${input_file}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$input_file" "$backup_file"
+    #echo "Created backup: $backup_file"
+    
+    # Use Perl - concatenate single and double quoted parts
+    perl -i -pe 's/(?<![a-zA-Z0-9.-])\Q'"$old_fqdn"'\E(?![a-zA-Z0-9.-])/'"$new_fqdn"'/g' "$input_file"
+    
+    # Count number of replacements made
+    local changes=$(diff -u "$backup_file" "$input_file" | grep "^[-+]" | grep -v "^[-+][-+][-+]" | wc -l)
+    
+    if [ "$changes" -gt 0 ]; then
+        # echo "Successfully updated $input_file"
+        # echo "Changes made: $((changes / 2)) line(s) modified"
+        # echo ""
+        # echo "Preview of changes:"
+        # diff -u "$backup_file" "$input_file" | head -20
+        rm -f "$backup_file"
+        return 0
+    else
+        #echo "No changes made to $input_file (FQDN not found)"
+        rm "$backup_file"
+        return 0
+    fi
+}
+
+# Example usage:
+# update_fqdn "values.yaml" "mifos.gazelle.test" "newdomain.com"
+
+
 #------------------------------------------------------------------------------
 # Function to update FQDN in YAML files (Helm values or Kubernetes manifests)
 # Example usage:
 #   update_fqdn "values.yaml" "hostname.mifos.gazelle.test" "hostname.newdomain.com"
 #------------------------------------------------------------------------------
-update_fqdn() {
+update_fqdn1() {
     local input_file="$1"
     local old_fqdn="$2"
     local new_fqdn="$3"
@@ -330,7 +389,7 @@ update_fqdn() {
         rm -f "$backup_file"
         return 0
     else
-        echo "No changes made to $input_file (FQDN not found)"
+        #echo "No changes made to $input_file (FQDN not found)"
         rm "$backup_file"  # Remove backup if no changes
         return 0
     fi

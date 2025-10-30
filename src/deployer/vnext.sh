@@ -23,10 +23,11 @@ function deployvNext() {
   # remove the TTK-CLI pod as it is not needed and comes up in error mode 
   rm  -f "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests/ttk/ttk-cli.yaml" > /dev/null 2>&1
 
-  echo "      Updating FQDNs in vNext manifests to use domain $GAZELLE_DOMAIN"
+  update_vnext_service_urls "$APPS_DIR/vnext/packages/installer/manifests"
+  
+  echo "    Updating FQDNs in vNext manifests to use domain $GAZELLE_DOMAIN"
   update_fqdn_batch "$APPS_DIR/vnext/packages/installer/manifests"  "local" "$GAZELLE_DOMAIN"
 
-  configurevNext  # make any local mods to manifests
   vnext_restore_demo_data $CONFIG_DIR "mongodump.gz" $INFRA_NAMESPACE
   for index in "${!VNEXT_LAYER_DIRS[@]}"; do
     folder="${VNEXT_LAYER_DIRS[index]}"
@@ -41,6 +42,41 @@ function deployvNext() {
   echo -e "\n${GREEN}============================"
   echo -e "vnext Deployed"
   echo -e "============================${RESET}\n"
+}
+
+#------------------------------------------------------------------------------
+# Function : update_vnext_service_urls
+# Description: Updates service URLs in vNext manifests to use cluster-local addresses.
+# Parameters:
+#   $1 - Directory containing the vNext manifests.
+#------------------------------------------------------------------------------
+function update_vnext_service_urls() {
+    local target_dir="$1"
+    
+    # Check if directory parameter is provided
+    if [[ -z "$target_dir" ]]; then
+        echo "Error: No directory specified."
+        echo "Usage: update_vnext_service_urls <directory>"
+        return 1
+    fi
+    
+    # Check if directory exists
+    if [[ ! -d "$target_dir" ]]; then
+        echo "Error: Directory '$target_dir' does not exist."
+        return 1
+    fi
+    
+    echo "    Updating service URLs in: $target_dir"
+    
+    # Find all YAML files and apply replacements (idempotent - won't duplicate if run multiple times)
+    find "$target_dir" -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i \
+        -e 's|value: kafka:9092$|value: kafka.infra.svc.cluster.local:9092|g' \
+        -e 's|value: mongodb://root:mongoDbPas42@mongodb:27017/$|value: mongodb://root:mongoDbPas42@mongodb.infra.svc.cluster.local:27017/|g' \
+        -e 's|value: redis-master$|value: redis-master.infra.svc.cluster.local|g' \
+        -e 's|value: http://infra-elasticsearch:9200$|value: http://infra-elasticsearch.infra.svc.cluster.local:9200|g' \
+        {} \;
+    
+    #echo "Service URL updates complete."
 }
 
 #------------------------------------------------------------------------------
