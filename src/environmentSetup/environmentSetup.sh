@@ -38,6 +38,10 @@ function install_os_prerequisites {
     printf "       [ok]\n"
 }
 
+#------------------------------------------------------------------------------
+# Function: add_hosts   
+# Description: Updates the local /etc/hosts file with entries for Mifos Gazelle services when using a local cluster.
+#------------------------------------------------------------------------------
 function add_hosts {
     if [[ "$environment" == "local" ]]; then
         printf "==> Mifos-gazelle: update local hosts file  "
@@ -46,9 +50,8 @@ function add_hosts {
         DOMAIN="${GAZELLE_DOMAIN:-mifos.gazelle.test}"
         
         VNEXTHOSTS=( mongohost.$DOMAIN mongo-express.$DOMAIN \
-        vnextadmin.$DOMAIN kafkaconsole.$DOMAIN elasticsearch.$DOMAIN redpanda-console.$DOMAIN \
-        fspiop.$DOMAIN bluebank.$DOMAIN greenbank.$DOMAIN \
-        bluebank-specapi.$DOMAIN greenbank-specapi.$DOMAIN )
+        vnextadmin.$DOMAIN elasticsearch.$DOMAIN kibana.$DOMAIN redpanda-console.$DOMAIN \
+        mongoexpress.$DOMAIN fspiop.$DOMAIN bluebank.$DOMAIN greenbank.$DOMAIN  )
         
         PHEEHOSTS=( ops.$DOMAIN ops-bk.$DOMAIN \
         bulk-connector.$DOMAIN messagegateway.$DOMAIN \
@@ -56,9 +59,9 @@ function add_hosts {
         channel-gsma.$DOMAIN crm.$DOMAIN mockpayment.$DOMAIN \
         mojaloop.$DOMAIN identity-mapper.$DOMAIN vouchers.$DOMAIN \
         zeebeops.$DOMAIN zeebe-operate.$DOMAIN zeebe-gateway.$DOMAIN \
-        elastic-phee.$DOMAIN kibana-phee.$DOMAIN notifications.$DOMAIN )
+        notifications.$DOMAIN )
         
-        MIFOSXHOSTS=( mifos.$DOMAIN fineract.$DOMAIN )
+        MIFOSXHOSTS=( mifos.$DOMAIN )
         
         ALLHOSTS=( "127.0.0.1" "localhost" "${MIFOSXHOSTS[@]}" "${PHEEHOSTS[@]}" "${VNEXTHOSTS[@]}" )
         export ENDPOINTS=`echo ${ALLHOSTS[*]}`
@@ -200,7 +203,7 @@ function envSetupLocalCluster {
         check_resources_ok
         install_os_prerequisites
         add_hosts
-        
+
         if ! is_local_cluster_installed; then
             install_k3s
             check_and_load_helm_repos

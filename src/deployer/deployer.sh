@@ -42,7 +42,7 @@ function cloneRepo() {
   # Clone the repository
   run_as_user "git clone -b \"$branch\" \"$repo_link\" \"$repo_path\" " >/dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo "      Repository $repo_path cloned successfully."
+    echo "    Repository $repo_path cloned successfully."
   else
     echo "Failed to clone $repo_link to $repo_path."
     return 1
@@ -158,12 +158,21 @@ function deployInfrastructure() {
   local redeploy="${1:-false}"
 
   printf "==> Deploying infrastructure \n"
-  
+
+
+  # echo  "The infra chart values.yaml is : $INFRA_CHART_DIR/values.yaml"
+  # update_fqdn "$INFRA_CHART_DIR/values.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
+  # echo "end debug" 
+
+
+  # exit
+
   if is_app_running  "$INFRA_NAMESPACE"; then
     if [[ "$redeploy" == "false" ]]; then
         echo "    Infrastructure is already deployed. Skipping deployment."
         return 0
     else
+        printf "    Redeploying infrastructure : Deleting existing resources in namespace %s\n" "$INFRA_NAMESPACE"
         deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
     fi
   fi
@@ -171,12 +180,16 @@ function deployInfrastructure() {
   createNamespace "$INFRA_NAMESPACE"
   check_command_execution $? "createNamespace $INFRA_NAMESPACE"
 
-  echo "      Updating FQDNs in INFRA Helm chart values.yaml to use domain $GAZELLE_DOMAIN"
+  # ensure we use the right domain name  in infra chart
+  echo "    Updating FQDNs in INFRA Helm chart values.yaml to use domain $GAZELLE_DOMAIN"
   update_fqdn "$INFRA_CHART_DIR/values.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
 
   # Update helm dependencies for infra chart
-  run_as_user "cd $INFRA_CHART_DIR && helm dep update" >> /dev/null 2>&1
-  check_command_execution $? "helm dep update for infra chart"
+  # run_as_user "cd $INFRA_CHART_DIR && helm dep update" # >> /dev/null 2>&1
+  # check_command_execution $? "helm dep update for infra chart"
+
+  # make sure helm chart dependencies are up to date
+  ensure_helm_dependencies "$INFRA_CHART_DIR"
 
   # Deploy infra helm chart
   printf "    Deploying infra helm chart  "

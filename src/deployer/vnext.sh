@@ -20,13 +20,28 @@ function deployvNext() {
   deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
   createNamespace "$VNEXT_NAMESPACE"
   cloneRepo "$VNEXTBRANCH" "$VNEXT_REPO_LINK" "$APPS_DIR" "$VNEXTREPO_DIR"
-  # remove the TTK-CLI pod as it is not needed and comes up in error mode 
-  rm  -f "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests/ttk/ttk-cli.yaml" > /dev/null 2>&1
 
+  # remove the manifests dir and TTK-CLI as they are not used in Gazelle v1.1.0
+  # and can complicate updates for services URLs and ingress hosts 
+  rm  -f "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests/ttk/ttk-cli.yaml" > /dev/null 2>&1
+  rm -rf "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests/infra" > /dev/null 2>&1
+  #configurevNext
+
+
+  # point service urls to cluster local infra namespace 
+  # echo "please hit enter to continue"
+  # read dummy
+  echo " DEBUG   Updating service URLs in vNext manifests to use cluster-local addresses"
   update_vnext_service_urls "$APPS_DIR/vnext/packages/installer/manifests"
-  
+  # echo "please hit enter to continue"
+  # read dummy
   echo "    Updating FQDNs in vNext manifests to use domain $GAZELLE_DOMAIN"
   update_fqdn_batch "$APPS_DIR/vnext/packages/installer/manifests"  "local" "$GAZELLE_DOMAIN"
+
+  # update the ingress class name from nginx-ext to nginx
+  find "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests" -type f -name "*.yaml" | while read -r file; do
+      perl -pi -e 's/ingressClassName:\s*nginx-ext/ingressClassName: nginx/' "$file"
+  done
 
   vnext_restore_demo_data $CONFIG_DIR "mongodump.gz" $INFRA_NAMESPACE
   for index in "${!VNEXT_LAYER_DIRS[@]}"; do
@@ -71,10 +86,10 @@ function update_vnext_service_urls() {
     # Find all YAML files and apply replacements (idempotent - won't duplicate if run multiple times)
     find "$target_dir" -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i \
         -e 's|value: kafka:9092$|value: kafka.infra.svc.cluster.local:9092|g' \
-        -e 's|value: mongodb://root:mongoDbPas42@mongodb:27017/$|value: mongodb://root:mongoDbPas42@mongodb.infra.svc.cluster.local:27017/|g' \
+        -e 's|value: mongodb://root:mongoDbPas42@mongodb:27017/\s*$|value: mongodb://root:mongoDbPas42@mongodb.infra.svc.cluster.local:27017/|g' \
         -e 's|value: redis-master$|value: redis-master.infra.svc.cluster.local|g' \
         -e 's|value: http://infra-elasticsearch:9200$|value: http://infra-elasticsearch.infra.svc.cluster.local:9200|g' \
-        {} \;
+        {} \; 
     
     #echo "Service URL updates complete."
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# core.sh -- functios that are core to the deployer script(s)
+# core.sh -- functions that are core to the deployer script(s)
 
 #------------------------------------------------------
 # Function : is_app_running
@@ -276,125 +276,50 @@ function manageElasticSecrets {
     fi
 }
 
-#!/bin/bash
-
-# Function to update FQDN in YAML files (Helm values or Kubernetes manifests)
-#!/bin/bash
-
-update_fqdn() {
-    local input_file="$1"
-    local old_fqdn="$2"
-    local new_fqdn="$3"
-    
-    # Validate parameters
-    if [ $# -ne 3 ]; then
-        echo "Error: Invalid number of arguments"
-        echo "Usage: update_fqdn <input_file> <old_fqdn> <new_fqdn>"
-        return 1
-    fi
-    
-    # Check if file exists
-    if [ ! -f "$input_file" ]; then
-        echo "Error: File '$input_file' does not exist"
-        return 1
-    fi
-    
-    # Check if file is writable
-    if [ ! -w "$input_file" ]; then
-        echo "Error: File '$input_file' is not writable"
-        return 1
-    fi
-    
-    # Create backup with timestamp
-    local backup_file="${input_file}.backup.$(date +%Y%m%d_%H%M%S)"
-    cp "$input_file" "$backup_file"
-    #echo "Created backup: $backup_file"
-    
-    # Use Perl - concatenate single and double quoted parts
-    perl -i -pe 's/(?<![a-zA-Z0-9.-])\Q'"$old_fqdn"'\E(?![a-zA-Z0-9.-])/'"$new_fqdn"'/g' "$input_file"
-    
-    # Count number of replacements made
-    local changes=$(diff -u "$backup_file" "$input_file" | grep "^[-+]" | grep -v "^[-+][-+][-+]" | wc -l)
-    
-    if [ "$changes" -gt 0 ]; then
-        # echo "Successfully updated $input_file"
-        # echo "Changes made: $((changes / 2)) line(s) modified"
-        # echo ""
-        # echo "Preview of changes:"
-        # diff -u "$backup_file" "$input_file" | head -20
-        rm -f "$backup_file"
-        return 0
-    else
-        #echo "No changes made to $input_file (FQDN not found)"
-        rm "$backup_file"
-        return 0
-    fi
-}
-
-# Example usage:
-# update_fqdn "values.yaml" "mifos.gazelle.test" "newdomain.com"
-
-
 #------------------------------------------------------------------------------
 # Function to update FQDN in YAML files (Helm values or Kubernetes manifests)
 # Example usage:
 #   update_fqdn "values.yaml" "hostname.mifos.gazelle.test" "hostname.newdomain.com"
+# Note: the k8s .svc.cluster.local addresses are not changed
 #------------------------------------------------------------------------------
-update_fqdn1() {
-    local input_file="$1"
-    local old_fqdn="$2"
-    local new_fqdn="$3"
-    
-    # Validate parameters
-    if [ $# -ne 3 ]; then
-        echo "Error: Invalid number of arguments"
-        echo "Usage: update_fqdn <input_file> <old_fqdn> <new_fqdn>"
-        return 1
-    fi
-    
-    # Check if file exists
-    if [ ! -f "$input_file" ]; then
-        echo "Error: File '$input_file' does not exist"
-        return 1
-    fi
-    
-    # Check if file is writable
-    if [ ! -w "$input_file" ]; then
-        echo "Error: File '$input_file' is not writable"
-        return 1
-    fi
-    
-    # Create backup with timestamp
-    local backup_file="${input_file}.backup.$(date +%Y%m%d_%H%M%S)"
-    cp "$input_file" "$backup_file"
-    # echo "Created backup: $backup_file"
-    
-    # Escape dots in FQDNs for sed (dots are special characters in regex)
-    local escaped_old_fqdn=$(echo "$old_fqdn" | sed 's/\./\\./g')
-    local escaped_new_fqdn=$(echo "$new_fqdn" | sed 's/\./\\./g')
-    
-    # Perform the replacement in-place
-    sed -i.tmp "s/${escaped_old_fqdn}/${new_fqdn}/g" "$input_file"
-    rm -f "${input_file}.tmp"
-    
-    # Count number of replacements made
-    local changes=$(diff -u "$backup_file" "$input_file" | grep "^[-+]" | grep -v "^[-+][-+][-+]" | wc -l)
-    
-    if [ "$changes" -gt 0 ]; then
-        # echo "Successfully updated $input_file"
-        # echo "Changes made: $((changes / 2)) line(s) modified"
-        # echo ""
-        # echo "Preview of changes:"
-        # diff -u "$backup_file" "$input_file" | head -20
-        rm -f "$backup_file"
-        return 0
-    else
-        #echo "No changes made to $input_file (FQDN not found)"
-        rm "$backup_file"  # Remove backup if no changes
-        return 0
-    fi
-    rm -f "$backup_file"
+update_fqdn() {
+  local file="$1"
+  local old_fqdn="$2"
+  local new_fqdn="$3"
+
+  if [[ -z "$file" || -z "$old_fqdn" || -z "$new_fqdn" ]]; then
+    echo "Usage: update_fqdn <file> <old_fqdn> <new_fqdn>"
+    return 1
+  fi
+
+  if [[ ! -f "$file" ]]; then
+    echo "Error: File not found: $file"
+    return 1
+  fi
+
+#   echo "Processing: $file"
+#   echo "Replacing:"
+#   echo "  - $old_fqdn  →  $new_fqdn"
+#   echo "  - *.local → $new_fqdn (excluding *.svc.cluster.local)"
+#   echo
+
+  perl -pi -e '
+    next if /\.svc\.cluster\.local/;
+
+    s/\b([a-zA-Z0-9.-]+)\.'"$old_fqdn"'\b/$1.'"$new_fqdn"'/g;
+  ' "$file"
+
 }
+
+# update_fqdn() {
+#     local file="$1"
+#     local old_fqdn="$2"
+#     local new_fqdn="$3"
+    
+#     [ ! -f "$file" ] && echo "Error: File not found" && return 1
+#     perl -pi -e "s/\\b([a-zA-Z0-9.-]+)\\.$old_fqdn\\b/\$1.$new_fqdn/g" "$file"
+
+# }
 
 #------------------------------------------------------------------------------
 # Function to update all YAML files in a directory structure
@@ -413,16 +338,29 @@ update_fqdn_batch() {
     done
 }
 
-
-
-# Update all Gazelle FQDN references
-# update_gazelle_domain() {
-#     local new_domain="$1"
-#     local old_domain="mifos.gazelle.test"
+#------------------------------------------------------------------------------
+# Standalone function to ensure Helm dependencies are up to date
+# Can be called from any function that needs to manage Helm chart dependencies
+# Parameters:
+#   $1 - Path to the Helm chart directory
+#------------------------------------------------------------------------------
+function ensure_helm_deps() {
+  local chartPath=$1
+  local chartName=$(basename "$chartPath")
+  
+  echo "    ensuring dependencies for $chartName chart"
+  
+  if [[ -f "$chartPath/Chart.lock" && -s "$chartPath/Chart.lock" ]]; then
+    # Count entries in Chart.lock and compare with .tgz files in charts/
+    local expected=$(grep -c "name:" "$chartPath/Chart.lock")
+    local actual=$(find "$chartPath/charts" -maxdepth 1 -name '*.tgz' 2>/dev/null | wc -l)
     
-#     # Update Helm values
-#     find . -name "values*.yaml" -exec bash -c 'update_fqdn "$0" "'"$old_domain"'" "'"$new_domain"'"' {} \;
-    
-#     # Update Kubernetes manifests
-#     find . -name "*.yaml" -path "*/kubernetes/*" -exec bash -c 'update_fqdn "$0" "'"$old_domain"'" "'"$new_domain"'"' {} \;
-# }
+    if [[ $actual -ge $expected && $expected -gt 0 ]]; then
+      run_as_user "cd $chartPath && helm dep build" >> /dev/null 2>&1
+    else
+      run_as_user "cd $chartPath && helm dep update" >> /dev/null 2>&1
+    fi
+  else
+    run_as_user "cd $chartPath && helm dep update" >> /dev/null 2>&1
+  fi
+}
