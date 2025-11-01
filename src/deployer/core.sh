@@ -344,7 +344,7 @@ update_fqdn_batch() {
 # Parameters:
 #   $1 - Path to the Helm chart directory
 #------------------------------------------------------------------------------
-function ensure_helm_deps() {
+function ensure_helm_dependencies() {
   local chartPath=$1
   local chartName=$(basename "$chartPath")
   

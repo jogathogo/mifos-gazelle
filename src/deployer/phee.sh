@@ -58,60 +58,13 @@ function prepare_payment_hub_chart() {
   
   # Run for ph-ee-engine
   phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
-  ensure_helm_deps "$phEEenginePath"
+  ensure_helm_dependencies "$phEEenginePath"
   
   # Run for gazelle (parent)
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
-  ensure_helm_deps "$gazelleChartPath"
+  ensure_helm_dependencies "$gazelleChartPath"
 }
 
-
-
-
-#------------------------------------------------------------------------------
-# Function : preparePaymentHubChart
-# Description: Prepares the PaymentHub EE Helm chart by ensuring dependencies are met.
-#------------------------------------------------------------------------------
-# function preparePaymentHubChart(){
-#   # Clone the repositories
-#   cloneRepo "$PHBRANCH" "$PH_REPO_LINK" "$APPS_DIR" "$PHREPO_DIR"  # needed for kibana and elastic secrets only 
-#   cloneRepo "$PH_EE_ENV_TEMPLATE_REPO_BRANCH" "$PH_EE_ENV_TEMPLATE_REPO_LINK" "$APPS_DIR" "$PH_EE_ENV_TEMPLATE_REPO_DIR"
-
-#   # Update FQDNs in values file and manifests
-#   echo "    Updating FQDNs Helm chart values and manifests to use domain $GAZELLE_DOMAIN"
-#   update_fqdn "$PH_VALUES_FILE" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
-#   update_fqdn_batch "$APPS_DIR/ph_template"  "mifos.gazelle.test" "$GAZELLE_DOMAIN"
-
-#   # Helper: choose dep build vs update
-#   function ensureHelmDeps() {
-#     local chartPath=$1
-#     local chartName=$(basename "$chartPath")
-    
-#     echo "    ensuring dependencies for $chartName chart"
-#     if [[ -f "$chartPath/Chart.lock" && -s "$chartPath/Chart.lock" ]]; then
-#       # Count entries in Chart.lock and compare with .tgz files in charts/
-#       local expected=$(grep -c "name:" "$chartPath/Chart.lock")
-#       local actual=$(find "$chartPath/charts" -maxdepth 1 -name '*.tgz' 2>/dev/null | wc -l)
-
-#       if [[ $actual -ge $expected && $expected -gt 0 ]]; then
-#         run_as_user "cd $chartPath && helm dep build" >> /dev/null 2>&1
-#       else
-#         run_as_user  "cd $chartPath && helm dep update" >> /dev/null 2>&1
-#       fi
-#     else
-#       run_as_user  "cd $chartPath && helm dep update" >> /dev/null 2>&1
-#     fi
-
-#   }
-
-#   # Run for ph-ee-engine
-#   phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
-#   ensureHelmDeps "$phEEenginePath"
-
-#   # Run for gazelle (parent)
-#   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
-#   ensureHelmDeps "$gazelleChartPath"
-# }
 
 #------------------------------------------------------------------------------
 # Function : deployPhHelmChartFromDir
