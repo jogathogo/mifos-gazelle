@@ -33,7 +33,7 @@ function deployPH(){
   deployPhHelmChartFromDir "$PH_NAMESPACE" "$gazelleChartPath" "$PH_VALUES_FILE"
   # now load the BPMS diagrams if they are not already loaded 
   
-  # bomns_to_deploy is the number of BPMS in the orchestration/feel directory
+  # bpmns_to_deploy is the number of BPMS in the orchestration/feel directory
   local bpmns_to_deploy=$(ls -l "$BASE_DIR/orchestration/feel"/*.bpmn | wc -l) 
   echo "    BPMNs to deploy count is $bpmns_to_deploy"
   if are_bpmns_loaded $bpmns_to_deploy ; then
@@ -46,6 +46,11 @@ function deployPH(){
   echo -e "============================${RESET}\n"
 }
 
+#------------------------------------------------------------------------------
+# Function : prepare_payment_hub_chart
+# Description: Prepares the PaymentHub EE Helm chart by cloning necessary repositories
+#              and updating FQDNs in values files and manifests.
+#------------------------------------------------------------------------------
 function prepare_payment_hub_chart() {
   # Clone the repositories
   cloneRepo "$PHBRANCH" "$PH_REPO_LINK" "$APPS_DIR" "$PHREPO_DIR"  # needed for kibana and elastic secrets only 
@@ -65,7 +70,6 @@ function prepare_payment_hub_chart() {
   ensure_helm_dependencies "$gazelleChartPath"
 }
 
-
 #------------------------------------------------------------------------------
 # Function : deployPhHelmChartFromDir
 # Description: Deploys a Helm chart for PaymentHub EE from a specified directory.
@@ -75,7 +79,6 @@ function prepare_payment_hub_chart() {
 #   $3 - (Optional) Values file for the Helm chart
 #------------------------------------------------------------------------------
 function deployPhHelmChartFromDir(){
-  # Parameters
   local namespace="$1"
   local chartDir="$2"      # Directory containing the Helm chart
   local valuesFile="$3"    # Values file for the Helm chart
@@ -163,7 +166,6 @@ deployBPMS() {
     echo -e "         run ./src/utils/deployBpmn-gazelle.sh to investigate${RESET}"
   fi
 }
-
 
 #------------------------------------------------------------------------------
 # Function: are_bpmns_loaded

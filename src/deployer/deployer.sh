@@ -381,9 +381,7 @@ function deployApps() {
     generateMifosXandVNextData
   else
     # Process each application in the space-separated list
-    for app in $appsToDeploy; do
-      #echo -e "${BLUE}--- Deploying '$app' ---${RESET}"
-      
+    for app in $appsToDeploy; do      
       case "$app" in
         "infra")
           deployInfrastructure "$redeploy"
@@ -412,8 +410,6 @@ function deployApps() {
           exit 1
           ;;
       esac
-      
-      #echo -e "${BLUE}--- Finished deploying '$app' ---${RESET}\n"
     done
 
   fi

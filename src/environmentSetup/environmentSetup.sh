@@ -4,6 +4,10 @@
 source "$RUN_DIR/src/environmentSetup/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/environmentSetup/k8s.sh" || { echo "FATAL: Could not source k8s.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 
+#------------------------------------------------------------------------------
+# Function: install_os_prerequisites   
+# Description: Installs required operating system packages if they are not already installed.
+#------------------------------------------------------------------------------
 function install_os_prerequisites {
     printf "\n\r==> Check & install operating system packages" 
     if ! command -v docker &> /dev/null; then
@@ -72,32 +76,10 @@ function add_hosts {
     fi
     printf "        [ok]\n"
 }
-
-# function add_hosts {
-#     if [[ "$environment" == "local" ]]; then
-#         printf "==> Mifos-gazelle: update local hosts file  "
-#         VNEXTHOSTS=( mongohost.mifos.gazelle.test mongo-express.mifos.gazelle.test \
-#                      vnextadmin.mifos.gazelle.test kafkaconsole.mifos.gazelle.test elasticsearch.mifos.gazelle.test redpanda-console.mifos.gazelle.test \
-#                      fspiop.mifos.gazelle.test bluebank.mifos.gazelle.test greenbank.mifos.gazelle.test \
-#                      bluebank-specapi.mifos.gazelle.test greenbank-specapi.mifos.gazelle.test )
-#         PHEEHOSTS=( ops.mifos.gazelle.test ops-bk.mifos.gazelle.test \
-#                     bulk-connector.mifos.gazelle.test messagegateway.mifos.gazelle.test \
-#                     minio-console.mifos.gazelle.test bill-pay.mifos.gazelle.test channel.mifos.gazelle.test \
-#                     channel-gsma.mifos.gazelle.test crm.mifos.gazelle.test mockpayment.mifos.gazelle.test \
-#                     mojaloop.mifos.gazelle.test identity-mapper.mifos.gazelle.test vouchers.mifos.gazelle.test \
-#                     zeebeops.mifos.gazelle.test zeebe-operate.mifos.gazelle.test zeebe-gateway.mifos.gazelle.test \
-#                     elastic-phee.mifos.gazelle.test kibana-phee.mifos.gazelle.test notifications.mifos.gazelle.test )
-#         MIFOSXHOSTS=( mifos.mifos.gazelle.test fineract.mifos.gazelle.test )
-#         ALLHOSTS=( "127.0.0.1" "localhost" "${MIFOSXHOSTS[@]}" "${PHEEHOSTS[@]}" "${VNEXTHOSTS[@]}" )
-#         export ENDPOINTS=`echo ${ALLHOSTS[*]}`
-#         perl -pi -e 's/^(127\.0\.0\.1\s+)(.*)/$1localhost/' /etc/hosts
-#         perl -p -i.bak -e 's/127\.0\.0\.1.*localhost.*$/$ENV{ENDPOINTS} /' /etc/hosts
-#     else
-#         printf "==> Skipping /etc/hosts modification for remote environment. Ensure DNS is configured for Mifos Gazelle services.\n"
-#     fi
-#     printf "        [ok]\n"
-# }
-
+#------------------------------------------------------------------------------
+# Function: delete_k8s_local_cluster   
+# Description: Deletes the local Kubernetes cluster and removes related configurations.
+#------------------------------------------------------------------------------
 function delete_k8s_local_cluster {
     printf "    removing local kubernetes cluster   "
     rm -f /usr/local/bin/helm >> /dev/null 2>&1
@@ -117,6 +99,10 @@ function print_end_message {
     echo -e "============================${RESET}"
 }
 
+#------------------------------------------------------------------------------
+# Function: print_end_message_delete   
+# Description: Prints a message indicating successful cleanup of the environment.
+#------------------------------------------------------------------------------
 function print_end_message_delete {
     echo -e "\n===================================================="
     echo -e "cleanup successful "
@@ -125,6 +111,16 @@ function print_end_message_delete {
     echo -e "Copyright © 2023 The Mifos Initiative\n"
 }
 
+function print_remote_cluster_start_message {
+    echo -e "\n${BLUE}================================"
+    echo -e "Remote Cluster Setup and deployment "
+    echo -e "================================${RESET}\n"
+}
+
+#------------------------------------------------------------------------------
+# Function: configure_k8s_user_env   
+# Description: Configures the shell environment for the Kubernetes user.
+#------------------------------------------------------------------------------
 function configure_k8s_user_env {
     start_message="# GAZELLE_START start of config added by mifos-gazelle #"
     end_message="#GAZELLE_END end of config added by mifos-gazelle #"
@@ -152,28 +148,19 @@ function configure_k8s_user_env {
         chown "$k8s_user":"$k8s_user" "$k8s_user_home/.bashrc" "$k8s_user_home/.bash_profile"
         printf "         [ok]\n"
     else
-        printf "\r==> user's .bashrc already configured for k8s      [skipping]\n"
+        printf "\r==> user's .bashrc already configured for k8s       [skipping]\n"
     fi
 }
 
-function envSetupRemoteCluster {
-    check_sudo  # might not be needed for remote but leave for consistency 
-    verify_user
-    # # are helm and  kubectl installed
-    # if ! checkTools kubectl; then
-    #     echo "kubectl is not installed."
-    # fi
-    if [[ "$mode" == "deploy" ]]; then
-        echo "remote- check kubectl" 
-        echo "remote - check connection to cluster"
-    else 
-        if ! is_local_cluster_installed; then
-            printf "==> Local kubernetes cluster is NOT installed\n"
-            exit 1
-        fi
-    fi
-} 
 
+
+#------------------------------------------------------------------------------
+# Function: is_cluster_accessible   
+# Description: Checks if the Kubernetes cluster is accessible by verifying that at least one node is in the 'Ready' state.
+# Returns:
+#   0 - Cluster is accessible and has at least one Ready node
+#   1 - Cluster is not accessible or has no Ready nodes
+#------------------------------------------------------------------------------
 is_cluster_accessible() {
     local k8s_user_cmd="kubectl get nodes --request-timeout=5s"
     local k8s_user_status
@@ -193,11 +180,33 @@ is_cluster_accessible() {
     fi
     return 0
 }
-
-function envSetupLocalCluster {
+#------------------------------------------------------------------------------
+# Function: env_setup_remote_cluster   
+# Description: Sets up a remote Kubernetes cluster.
+# Parameters:
+#   $1 - Mode of operation: "deploy", "cleanapps"
+#------------------------------------------------------------------------------
+function env_setup_remote_cluster {
     local mode="$1"
-    # install_k3s
+    if ! is_cluster_accessible; then
+        printf "** Error: Remote kubernetes cluster is NOT accessible. Please check your KUBECONFIG and network connectivity. ** \n\n"
+        exit 1
+    else 
+        printf "\r==> Remote kubernetes cluster is accessible       [ok]\n"
+        return 0
+    fi
+    # note that we might need to install NGINX here or interrogate remote cluster for existing ingress controller
+    # For now we assume remote cluster is pre-configured with an ingress controller
+} 
 
+#------------------------------------------------------------------------------
+# Function: env_setup_local_cluster   
+# Description: Sets up a local Kubernetes cluster using k3s.
+# Parameters:
+#   $1 - Mode of operation: "deploy", "cleanapps", or "cleanall"
+#------------------------------------------------------------------------------
+function env_setup_local_cluster {
+    local mode="$1"
 
     if [[ "$mode" == "deploy" ]]; then
         check_resources_ok
@@ -238,7 +247,7 @@ function envSetupLocalCluster {
     fi
 }   
 
-function envSetupMain {
+function env_setup_main() {
     local mode="$1"
 
     check_sudo
@@ -250,10 +259,10 @@ function envSetupMain {
     configure_k8s_user_env
 
     if [[ "$environment" == "local" ]]; then
-        envSetupLocalCluster "$mode"
+        env_setup_local_cluster "$mode"
     elif [[ "$environment" == "remote" ]]; then
-        #echo "DEBUG 12 [envsetupMain] calling RemoteCluster"
-        envSetupRemoteCluster "$mode"
+        print_remote_cluster_start_message
+        env_setup_remote_cluster "$mode"
     else
         printf "** Error: Invalid environment type specified: %s. Must be 'local' or 'remote'. **\n" "$environment"
         exit 1

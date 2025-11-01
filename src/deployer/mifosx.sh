@@ -26,9 +26,8 @@ function DeployMifosXfromYaml() {
     cloneRepo "$MIFOSX_BRANCH" "$MIFOSX_REPO_LINK" "$APPS_DIR" "$MIFOSX_REPO_DIR"
     
     # Update FQDNs in values file and manifests
-    echo "      Updating MifosX FQDNs manifest(s) to use domain $GAZELLE_DOMAIN"
+    echo "    Updating MifosX FQDNs manifest(s) to use domain $GAZELLE_DOMAIN"
     update_fqdn "$MIFOSX_MANIFESTS_DIR/web-app-ingress.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
-    # DEBUG TODO probably not needed update_fqdn_batch "$MIFOSX_MANIFESTS_DIR"  "mifos.gazelle.test" "$GAZELLE_DOMAIN"
 
     # Restore the database dump before starting MifosX
     # Assumes FINERACT_LIQUIBASE_ENABLED=false in fineract deployment
@@ -52,9 +51,12 @@ function DeployMifosXfromYaml() {
     echo -e "=====================================${RESET}\n"
 }
 
-function generateMifosXandVNextData {
-  # generate load and syncronize MifosX accounts and vNext Oracle associations
-  
+#------------------------------------------------------------------------------
+# Function : generateMifosXandVNextData
+# Description: Generates MifosX clients and accounts & registers associations with vNext Oracle.
+# Parameters: None
+#------------------------------------------------------------------------------
+function generateMifosXandVNextData {  
   local timeout=300  # 5 minutes in seconds
   local recheck_time=30  # 30 seconds
   local start_time=$(date +%s)
@@ -93,21 +95,3 @@ function generateMifosXandVNextData {
   echo -e "${RED}Timeout: vNext or MifosX did not start within ${timeout} seconds => skipping MifosX and vNext data generation ${RESET}"
   return 1
 }
-
-# function generateMifosXandVNextData {
-#   # generate load and syncronize MifosX accounts and vNext Oracle associations  
-#   result_vnext=$(is_app_running "vnext" )
-#   result_mifosx=$(is_app_running  "mifosx" )
-
-#   if [[ "$result_vnext" == "true" ]]  && [[ "$result_mifosx" == "true" ]] ; then
-#     echo -e "${BLUE}Generating MifosX clients and accounts & registering associations with vNext Oracle ...${RESET}"
-#     $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py > /dev/null 2>&1
-#     if [[ "$?" -ne 0 ]]; then
-#       echo -e "${RED}Error generating vNext clients and accounts ${RESET}"
-#       echo " run $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py to investigate"
-#       return 1 
-#     fi
-#   else 
-#     echo -e "${YELLOW}vNext or MifosX is not running => skipping MifosX and vNext data generation ${RESET}"
-#   fi
-# }

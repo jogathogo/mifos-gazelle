@@ -184,8 +184,8 @@ function install_k8s_tools {
     # --- NOTE ON VERSIONING ---
     # TODO 
     # Define these versions globally (or ensure they are passed in)
-    local kubectl_version="v1.30.0"
-    local helm_version="v3.14.4"
+    # local kubectl_version="v1.30.0"
+    # local helm_version="v3.14.4"
 
     # Detect architecture
     ARCH=$(uname -m)
@@ -198,12 +198,12 @@ function install_k8s_tools {
     # Array of tools and their installation details
     declare -A tools=(
         # kubectl uses the official download site, which provides the executable directly.
-        ["kubectl"]="https://dl.k8s.io/release/${kubectl_version}/bin/linux/${ARCH_TYPE}/kubectl"
+        ["kubectl"]="https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH_TYPE}/kubectl"
         ["kubens"]="https://github.com/ahmetb/kubectx/releases/download/v0.9.4/kubens_v0.9.4_linux_${ARCH_TYPE}.tar.gz"
         ["kubectx"]="https://github.com/ahmetb/kubectx/releases/download/v0.9.4/kubectx_v0.9.4_linux_${ARCH_TYPE}.tar.gz"
         ["kustomize"]="https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
         ["k9s"]="https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_${ARCH_TYPE}.tar.gz"
-        ["helm"]="https://get.helm.sh/helm-${helm_version}-linux-${ARCH_TYPE}.tar.gz"
+        ["helm"]="https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH_TYPE}.tar.gz"
     )
 
     for tool in "${!tools[@]}"; do

@@ -25,16 +25,10 @@ function deployvNext() {
   # and can complicate updates for services URLs and ingress hosts 
   rm  -f "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests/ttk/ttk-cli.yaml" > /dev/null 2>&1
   rm -rf "$APPS_DIR/$VNEXTREPO_DIR/packages/installer/manifests/infra" > /dev/null 2>&1
-  #configurevNext
 
-
-  # point service urls to cluster local infra namespace 
-  # echo "please hit enter to continue"
-  # read dummy
   echo "    Updating service URLs in vNext manifests to use cluster-local addresses"
   update_vnext_service_urls "$APPS_DIR/vnext/packages/installer/manifests"
-  # echo "please hit enter to continue"
-  # read dummy
+
   echo "    Updating FQDNs in vNext manifests to use domain $GAZELLE_DOMAIN"
   update_fqdn_batch "$APPS_DIR/vnext/packages/installer/manifests"  "local" "$GAZELLE_DOMAIN"
 
@@ -80,8 +74,7 @@ function update_vnext_service_urls() {
         echo "Error: Directory '$target_dir' does not exist."
         return 1
     fi
-    
-    echo "    Updating service URLs in: $target_dir"
+    #echo "    Updating service URLs in: $target_dir"
     
     # Find all YAML files and apply replacements (idempotent - won't duplicate if run multiple times)
     find "$target_dir" -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i \

@@ -2,7 +2,7 @@
 
 source "$RUN_DIR/src/utils/logger.sh" || { echo "FATAL: Could not source logger.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/utils/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
-source "$RUN_DIR/src/configurationManager/config.sh" || { echo "FATAL: Could not source config.sh. Check RUN_DIR: $RUN_DIR"; exit 1; } 
+#source "$RUN_DIR/src/configurationManager/config.sh" || { echo "FATAL: Could not source config.sh. Check RUN_DIR: $RUN_DIR"; exit 1; } 
 source "$RUN_DIR/src/environmentSetup/environmentSetup.sh" || { echo "FATAL: Could not source environmentSetup.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/deployer/deployer.sh" || { echo "FATAL: Could not source deployer.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 
@@ -422,15 +422,15 @@ function main {
         echo -e "The deployment made by this script is currently recommended for demo, test and educational purposes "
         echo -e "======================================================================================================"
         echo -e "${RESET}"
-        envSetupMain "$mode"
+        env_setup_main "$mode"
         deployApps "$mifosx_instances" "$apps" "$redeploy"
     elif [ "$mode" == "cleanapps" ]; then
         logWithVerboseCheck "$debug" "$INFO" "Cleaning up Mifos Gazelle applications only"
-        envSetupMain "$mode"
+        env_setup_main "$mode"
         deleteApps "$mifosx_instances" "$apps"
     elif [ "$mode" == "cleanall" ]; then
-        envSetupMain "$mode"
-        # envSetupMain will not remove remote cluster so need to run deleteApps
+        env_setup_main "$mode"
+        # env_setup_main will not remove remote cluster so need to run deleteApps
         if [[ "$environment" == "remote" ]]; then
             deleteApps "$mifosx_instances" "all"
         fi
