@@ -31,7 +31,7 @@ function deployvNext() {
   # point service urls to cluster local infra namespace 
   # echo "please hit enter to continue"
   # read dummy
-  echo " DEBUG   Updating service URLs in vNext manifests to use cluster-local addresses"
+  echo "    Updating service URLs in vNext manifests to use cluster-local addresses"
   update_vnext_service_urls "$APPS_DIR/vnext/packages/installer/manifests"
   # echo "please hit enter to continue"
   # read dummy

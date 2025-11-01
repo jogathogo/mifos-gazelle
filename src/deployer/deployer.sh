@@ -276,9 +276,11 @@ function test_mifosx() {
 #------------------------------------------------------------
 function print_cleanup_end_message() {
   cat << EOF
+
 =================================
-Mifos Gazelle "cleanup" commplete
+Mifos Gazelle "cleanup" complete
 =================================
+
 EOF
 }
 
@@ -366,7 +368,7 @@ function deployApps() {
   local redeploy="${3:-false}"
   
   #echo "Redeploy mode: $redeploy"
-  echo -e "${BLUE}Starting deployment for applications: $appsToDeploy...${RESET}"
+  #echo -e "${BLUE}Starting deployment for applications: $appsToDeploy...${RESET}"
 
   # Special handling for 'all' as a block-deploy
   if [[ "$appsToDeploy" == "all" ]]; then

@@ -85,7 +85,7 @@ function loadConfigFromFile() {
     if [[ -n "$config_k8s_user" ]]; then
         if [[ "$config_k8s_user" == "\$USER" || "$config_k8s_user" == '$USER' ]]; then
             k8s_user="$(resolve_invoker_user)"
-            logWithLevel "$INFO" "Expanded '\$USER' in config to invoking username: $k8s_user"
+            #logWithLevel "$INFO" "Expanded '\$USER' in config to invoking username: $k8s_user"
         else
             k8s_user="$config_k8s_user"
         fi
@@ -95,7 +95,7 @@ function loadConfigFromFile() {
         if [[ "$config_kubeconfig_path" == "~/.kube/config" ]]; then
             k8s_user_home=$(eval echo "~$k8s_user")
             kubeconfig_path="$k8s_user_home/.kube/config"
-            logWithLevel "$INFO" "Expanded kubeconfig_path to: $kubeconfig_path"
+            #logWithLevel "$INFO" "Expanded kubeconfig_path to: $kubeconfig_path"
         else
             kubeconfig_path="$config_kubeconfig_path"
         fi
@@ -113,8 +113,6 @@ function loadConfigFromFile() {
     local config_ubuntu_ok_versions_list=$(crudini --get "$config_path" kubernetes ubuntu_ok_versions_list 2>/dev/null)
     if [[ -n "$config_ubuntu_ok_versions_list" ]]; then ubuntu_ok_versions_list="$config_ubuntu_ok_versions_list"; fi
 
-    echo " DEBUG [comandline]  ubuntu_ok_versions_list is $ubuntu_ok_versions_list "
-
     # Read app enablement flags and construct the 'apps' variable
     local enabled_apps_list=""
     local valid_apps=("infra" "vnext" "phee" "mifosx")
@@ -124,7 +122,7 @@ function loadConfigFromFile() {
         app_enabled=$(echo "$app_enabled" | tr '[:upper:]' '[:lower:]')
         if [[ "$app_enabled" == "true" ]]; then
             enabled_apps_list+=" $app_name"
-            logWithLevel "$INFO" "Config indicates '$app_name' is enabled."
+            #logWithLevel "$INFO" "Config indicates '$app_name' is enabled."
         fi
     done
     apps=$(echo "$enabled_apps_list" | xargs)
@@ -146,7 +144,7 @@ function loadConfigFromFile() {
             if [[ -n "$value" ]]; then
                 eval "$var_name=\"\$value\""
                 export "$var_name"
-                logWithLevel "$INFO" "Overridden from config [$section]: $var_name=$value"
+                #logWithLevel "$INFO" "Overridden from config [$section]: $var_name=$value"
             fi
         done
     done
@@ -278,7 +276,6 @@ function validateInputs {
     fi
 
     if [[ "$environment" == "local" ]]; then
-        echo "DEBUG TODO -> k8s_version is $k8s_version"
         if [[ -z "$k8s_version" ]]; then
             echo "Error: k8s_version must be specified for local environment."
             showUsage
@@ -393,9 +390,6 @@ export KUBECONFIG=$kubeconfig_path
 CONFIG_FILE_PATH="$DEFAULT_CONFIG_FILE"
 
 function main {
-    echo "DEBUG3"
-    echo "RUN_DIR is $RUN_DIR"
-
     welcome
     install_crudini
 
@@ -419,8 +413,6 @@ function main {
     if [[ -n "${cmd_args_map["debug"]}" ]]; then debug="${cmd_args_map["debug"]}"; fi
     if [[ -n "${cmd_args_map["redeploy"]}" ]]; then redeploy="${cmd_args_map["redeploy"]}"; fi
     if [[ -n "${cmd_args_map["environment"]}" ]]; then environment="${cmd_args_map["environment"]}"; fi
-
-    echo "DEBUG [ cmdline] k8s_user is $k8s_user"
 
     validateInputs
 

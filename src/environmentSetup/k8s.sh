@@ -162,10 +162,10 @@ printf "\r==> Check and load Helm repositories    "
 function install_nginx_local_cluster {
     printf "\r==> Installing NGINX to local cluster "
     if ! check_nginx_running; then 
-        run_as_user  "helm delete ingress-nginx -n default " #> /dev/null 2>&1
+        run_as_user  "helm delete ingress-nginx -n default " > /dev/null 2>&1
         run_as_user  "helm install --wait --timeout 1200s ingress-nginx ingress-nginx \
                             --repo https://kubernetes.github.io/ingress-nginx \
-                            -n default -f $NGINX_VALUES_FILE" # > /dev/null 2>&1
+                            -n default -f $NGINX_VALUES_FILE"  > /dev/null 2>&1
     fi 
     if check_nginx_running; then 
         printf "              [ok]\n"
