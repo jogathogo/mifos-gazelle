@@ -240,7 +240,7 @@ ph-ee-engine:
         - name: JAVA_TOOL_OPTIONS
           value: "-Xms64m -Xmx256m -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError"
 
-  connector_bulk:
+  ph_ee_bulk_processor:
     enabled: true
     image: docker.io/openmf/ph-ee-bulk-processor:v1.12.1-gazelle-1.1.0
     imagePullPolicy: IfNotPresent
@@ -363,7 +363,7 @@ ph-ee-engine:
         memory: 1Gi
         cpu: 500m
 
-  ph-ee-connector:
+  ph_ee_connector_bulk:
     enabled: true
 
   zeebe_ops:

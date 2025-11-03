@@ -232,7 +232,8 @@ function applyKubeManifests() {
         run_as_user "kubectl apply -f $file -n $namespace" >> /dev/null 2>&1
         check_command_execution $? "kubectl apply -f $file -n $namespace"
       fi
-    done
+    fi
+  done
 
     # Apply other manifests
     for file in "$directory"/*.yaml; do
@@ -291,17 +292,6 @@ EOF
 #------------------------------------------------------------
 function print_deployment_end_message() {
   cat << EOF
-=================================
-Thank you for using Mifos Gazelle
-=================================
-
-CHECK DEPLOYMENTS USING kubectl
-kubectl get pods -n vnext         # For testing mojaloop vNext
-kubectl get pods -n paymenthub    # For testing PaymentHub EE
-kubectl get pods -n mifosx        # For testing MifosX
-
-or install k9s by executing ./src/utils/install-k9s.sh in this terminal window
-EOF
 }
 
 #------------------------------------------------------------
@@ -377,7 +367,7 @@ function deployApps() {
     deployvNext
     deployPH
     DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR"
-    deployBPMS
+    deployBPMNs # deploy the BPMN processes to MifosX BPM Suite
     generateMifosXandVNextData
   else
     # Process each application in the space-separated list
