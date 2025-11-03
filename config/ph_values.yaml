@@ -136,7 +136,7 @@ ph-ee-engine:
 
       ingress:
         enabled: true
-        host: "zeebe-gateway.mifos.gazelle.test"
+        host: "zeebe-gateway.mifos.gazelle.localhost"
 
     operate:
       enabled: true
@@ -163,7 +163,7 @@ ph-ee-engine:
 
       ingress:
         enabled: true
-        host: "zeebe-operate.mifos.gazelle.test"
+        host: "zeebe-operate.mifos.gazelle.localhost"
 
     tasklist:
       enabled: false
@@ -265,14 +265,14 @@ ph-ee-engine:
     #     kubernetes.io/ingress.class: nginx
     #     nginx.ingress.kubernetes.io/cors-allow-headers: "content-type,platform-tenantid,purpose,type,x-callback-url,x-correlationid,x-program-id,x-registering-institution-id,x-signature"
     #     nginx.ingress.kubernetes.io/cors-allow-methods: PUT, GET, POST, OPTIONS, DELETE
-    #     nginx.ingress.kubernetes.io/cors-allow-origin: "https://ops.mifos.gazelle.test"
-    #     #nginx.ingress.kubernetes.io/cors-allow-origin-regex: "https?://ops\.mifos.gazelle.test:4200"
-    #     #nginx.ingress.kubernetes.io/cors-allow-origin-regex: 'https://ops.mifos.gazelle.test'
+    #     nginx.ingress.kubernetes.io/cors-allow-origin: "https://ops.mifos.gazelle.localhost"
+    #     #nginx.ingress.kubernetes.io/cors-allow-origin-regex: "https?://ops\.mifos.gazelle.localhost:4200"
+    #     #nginx.ingress.kubernetes.io/cors-allow-origin-regex: 'https://ops.mifos.gazelle.localhost'
     #     nginx.ingress.kubernetes.io/enable-cors: 'true'
     #   tls:
     #     - secretName: sandbox-secret
     #   hosts:
-    #     - host: bulk-connector.mifos.gazelle.test     
+    #     - host: bulk-connector.mifos.gazelle.localhost     
     #       paths: 
     #       - path: "/"
     #         backend:
@@ -283,8 +283,8 @@ ph-ee-engine:
 
 # tls:
 # - hosts:
-#   - channel.mifos.gazelle.test
-#   - channel-gsma.mifos.gazelle.test
+#   - channel.mifos.gazelle.localhost
+#   - channel-gsma.mifos.gazelle.localhost
 #   secretName: sandbox-secret
 
   channel:
@@ -317,10 +317,10 @@ ph-ee-engine:
       pathType: Prefix
       tls:
       - hosts:
-        - channel.mifos.gazelle.test
+        - channel.mifos.gazelle.localhost
         secretName: sandbox-secret
       hosts:
-        - host: channel.mifos.gazelle.test          
+        - host: channel.mifos.gazelle.localhost          
           paths: 
           - path: /
             backend:
@@ -328,7 +328,7 @@ ph-ee-engine:
                 name: ph-ee-connector-channel
                 port:
                   number: 82
-        # - host: channel-gsma.mifos.gazelle.test          
+        # - host: channel-gsma.mifos.gazelle.localhost          
         #   paths:          
         #   - path: /
         #     backend:
@@ -340,7 +340,7 @@ ph-ee-engine:
   minio:
     ingress:
       hosts:
-        - minio.mifos.gazelle.test
+        - minio.mifos.gazelle.localhost
     resources:
       requests:
         memory: 128Mi
@@ -351,7 +351,7 @@ ph-ee-engine:
       annotations: {}
       path: /
       hosts:
-        - minio-console.mifos.gazelle.test
+        - minio-console.mifos.gazelle.localhost
   kafka:
     enabled: true
     heapOpts: "-Xms128m -Xmx256m"

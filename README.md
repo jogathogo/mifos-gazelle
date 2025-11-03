@@ -17,5 +17,3 @@ This repository contains the Mifos Gazelle deployment utilities
 - [Contributing Guidelines](CONTRIBUTING.md)
 - [License Information](LICENSE.md)
 - [Architecture](ARCHITECTURE.md)
-
-

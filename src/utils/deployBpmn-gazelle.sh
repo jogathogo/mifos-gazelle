@@ -2,9 +2,15 @@
 
 # Define variables for the charts
 SCRIPT_DIR=$( cd $(dirname "$0") ; pwd )
+config_dir="$( cd $(dirname "$SCRIPT_DIR")/../config ; pwd )"
+config_ini="$config_dir/config.ini"
+
 BPMN_DIR="$( cd $(dirname "$SCRIPT_DIR")/../orchestration/ ; pwd )"
 
-HOST="https://zeebeops.mifos.gazelle.test/zeebe/upload"
+domain=$(grep GAZELLE_DOMAIN "$config_ini" | cut -d '=' -f2 | tr -d " " )
+HOST="https://zeebeops.$domain/zeebe/upload"
+echo "Using Endpoint:  $HOST"
+
 DEBUG=false
 TENANT="greenbank"  # Default tenant TODO does this actually do anything 
 

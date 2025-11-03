@@ -27,9 +27,13 @@ kafka:
         memory: "64Mi" # Using Mi for clarity and consistency
         cpu: "100m"
   
-  extraConfig:
-    autoCreateTopicsEnabled: "true"
-    offsetsTopicReplicationFactor: "1"
+  extraConfig: | 
+    auto.create.topics.enable=true
+    offsets.topic.replication.factor=1
+    transaction.state.log.replication.factor=1
+    transaction.state.log.min.isr=1
+    default.replication.factor=1
+    min.insync.replicas=1
 
   # need this to ensure redpanda-console can connect to kafka
   listeners:
@@ -165,7 +169,7 @@ redpanda-console:
     enabled: true
     className: nginx
     hosts:
-      - host: redpanda-console.mifos.gazelle.test
+      - host: redpanda-console.mifos.gazelle.localhost
         paths:
           - path: /
             pathType: ImplementationSpecific
@@ -221,7 +225,7 @@ mongo-express:
     enabled: true
     ingressClassName: nginx
     hosts:
-      - host: mongoexpress.mifos.gazelle.test
+      - host: mongoexpress.mifos.gazelle.localhost
         paths:
           - /
 
@@ -302,7 +306,7 @@ elasticsearch:
   ingress:
     enabled: true
     ingressClassName: nginx
-    hostname: elasticsearch.mifos.gazelle.test
+    hostname: elasticsearch.mifos.gazelle.localhost
     tls:
       - enabled: false
 
@@ -327,7 +331,7 @@ elasticsearch:
     ingress:
       enabled: true
       ingressClassName: nginx
-      hostname: kibana.mifos.gazelle.test
+      hostname: kibana.mifos.gazelle.localhost
       tls:
         enabled: false
 
