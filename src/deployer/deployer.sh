@@ -159,14 +159,6 @@ function deployInfrastructure() {
 
   printf "==> Deploying infrastructure \n"
 
-
-  # echo  "The infra chart values.yaml is : $INFRA_CHART_DIR/values.yaml"
-  # update_fqdn "$INFRA_CHART_DIR/values.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
-  # echo "end debug" 
-
-
-  # exit
-
   if is_app_running  "$INFRA_NAMESPACE"; then
     if [[ "$redeploy" == "false" ]]; then
         echo "    Infrastructure is already deployed. Skipping deployment."
@@ -232,7 +224,6 @@ function applyKubeManifests() {
         run_as_user "kubectl apply -f $file -n $namespace" >> /dev/null 2>&1
         check_command_execution $? "kubectl apply -f $file -n $namespace"
       fi
-    fi
   done
 
     # Apply other manifests
@@ -292,6 +283,17 @@ EOF
 #------------------------------------------------------------
 function print_deployment_end_message() {
   cat << EOF
+=================================
+Thank you for using Mifos Gazelle
+=================================
+
+CHECK DEPLOYMENTS USING kubectl
+kubectl get pods -n vnext         # For testing mojaloop vNext
+kubectl get pods -n paymenthub    # For testing PaymentHub EE
+kubectl get pods -n mifosx        # For testing MifosX
+
+or install k9s by executing ./src/utils/install-k9s.sh in this terminal window
+EOF
 }
 
 #------------------------------------------------------------

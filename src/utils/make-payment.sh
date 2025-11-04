@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Make sure we can set the domain from config.ini
+SCRIPT_DIR=$( cd $(dirname "$0") ; pwd )
+config_dir="$( cd $(dirname "$SCRIPT_DIR")/../config ; pwd )"
+config_ini="$config_dir/config.ini"
+GAZELLE_DOMAIN=$(grep GAZELLE_DOMAIN "$config_ini" | cut -d '=' -f2 | tr -d " " )
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -9,8 +15,8 @@ YELLOW='\033[0;33m'
 RESET='\033[0m'
 
 # API Configuration
-TRANSFER_URL="https://channel.mifos.gazelle.test/channel/transfer"
-MIFOS_CORE_API="http://mifos.mifos.gazelle.test/fineract-provider/api/v1"
+TRANSFER_URL="https://channel.$GAZELLE_DOMAIN/channel/transfer"
+MIFOS_CORE_API="http://mifos.$GAZELLE_DOMAIN/fineract-provider/api/v1"
 MIFOS_AUTH="mifos:password"
 
 function usage() {
