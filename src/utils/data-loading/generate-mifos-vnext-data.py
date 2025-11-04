@@ -15,6 +15,8 @@ import json
 import datetime
 import uuid
 import sys
+from pathlib import Path
+import configparser
 import base64 # Needed to decode the Authorization header if you want to see the credentials
 import urllib3 # Import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) # Disable InsecureRequestWarning
@@ -24,7 +26,6 @@ TENANTS = {
     "bluebank": 2,
     "greenbank": 1
 }
-
 
 FIRST_NAMES = [
     "Alice", "Bob", "Charlie", "Diana", "Ethan",
@@ -38,7 +39,6 @@ FIRST_NAMES = [
     "Nathan", "Ruby", "Gabriel", "Isla", "Sebastian",
     "Evie", "Caleb", "Zoe", "Finn", "Nora"
 ]
-
 
 LAST_NAMES = [
     "Smith", "Johnson", "Williams", "Brown", "Jones",
@@ -55,12 +55,13 @@ LAST_NAMES = [
 
 tenant_client_counter = {}
 
-
+# --- Global VURL / endpoints  ---
 API_BASE_URL = "https://mifos.mifos.gazelle.test/fineract-provider/api/v1"
-CLIENTS_API_URL = f"{API_BASE_URL}/clients"
-SAVINGS_API_URL = f"{API_BASE_URL}/savingsaccounts"
-SAVINGS_PRODUCTS_API_URL = f"{API_BASE_URL}/savingsproducts"
-INTEROP_PARTIES_API_URL = f"{API_BASE_URL}/interoperation/parties/MSISDN"
+CLIENTS_API_URL = None
+SAVINGS_API_URL = None
+SAVINGS_PRODUCTS_API_URL = None
+INTEROP_PARTIES_API_URL = None
+VNEXT_URL = None
 
 #TENANT_ID = "fredbank" # placeholder , should never be used
 AUTH_HEADER_VALUE = "Basic bWlmb3M6cGFzc3dvcmQ="
@@ -188,6 +189,7 @@ def create_savings_product(headers):
     Returns the product ID on success, None on failure.
     """
     print(f"Attempting to find existing product with short name '{PRODUCT_SHORTNAME}'...", file=sys.stderr)
+    print(f"SAVINGS_PRODUCTS_API_URL: {SAVINGS_PRODUCTS_API_URL}", file=sys.stderr) # Debugging URL
     existing_product_id = get_product_id_by_shortname(headers, PRODUCT_SHORTNAME)
 
     if existing_product_id is not None:
@@ -525,7 +527,7 @@ def register_client_with_vnext(headers, tenant_id, mobile_number, currency="USD"
     Registers a client with vNext using the MSISDN/mobile number.
     Returns True on success, False on failure.
     """
-    vnext_url = f"http://vnextadmin.mifos.gazelle.test/_interop/participants/MSISDN/{mobile_number}"
+    # #vnext_url = f"http://vnextadmin.mifos.gazelle.test/_interop/participants/MSISDN/{mobile_number}"
     payload = {
         "fspId": tenant_id,
         "currency": currency
@@ -538,7 +540,7 @@ def register_client_with_vnext(headers, tenant_id, mobile_number, currency="USD"
         "Content-Type": "application/vnd.interoperability.participants+json;version=1.1"
     }
 
-    response_data = make_api_request("POST", vnext_url, vnext_headers, json_data=payload)
+    response_data = make_api_request("POST", VNEXT_URL, vnext_headers, json_data=payload)
     print(f"Response data from vNext: {response_data}", file=sys.stderr) # Debugging response
 
     if response_data is not None:
@@ -551,6 +553,38 @@ def register_client_with_vnext(headers, tenant_id, mobile_number, currency="USD"
 
 # --- Main Execution ---
 if __name__ == "__main__":
+    # get the script directory and 
+    script_path = Path( __file__ ).absolute()
+    base_dir = script_path.parent.parent.parent.parent
+    print(f"Base directory determined as: {base_dir}", file=sys.stderr) 
+    config_file = base_dir / "config" / "config.ini" 
+    print(f"Configuration file path: {config_file}", file=sys.stderr)   
+    # Read the config file
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    # Get the GAZELLE_DOMAIN value
+    gazelle_domain = config.get('general', 'GAZELLE_DOMAIN')    
+    print(f"GAZELLE_DOMAIN from config: {gazelle_domain}", file=sys.stderr)
+
+    # Update the API_BASE_URLs based on the GAZELLE_DOMAIN
+    API_BASE_URL = f"https://mifos.{gazelle_domain}/fineract-provider/api/v1"
+    CLIENTS_API_URL = f"{API_BASE_URL}/clients"
+    SAVINGS_API_URL = f"{API_BASE_URL}/savingsaccounts"
+    SAVINGS_PRODUCTS_API_URL = f"{API_BASE_URL}/savingsproducts"
+    INTEROP_PARTIES_API_URL = f"{API_BASE_URL}/interoperation/parties/MSISDN"   
+    VNEXT_URL=f"http://vnextadmin.{gazelle_domain}/_interop/participants/MSISDN/{{mobile_number}}"
+    print(f"Updated API_BASE_URL to: {API_BASE_URL}", file=sys.stderr)  
+    print(f"Updated CLIENTS_API_URL to: {CLIENTS_API_URL}", file=sys.stderr)
+    print (f"Updated SAVINGS_API_URL to: {SAVINGS_API_URL}", file=sys.stderr)
+    print(f"Updated SAVINGS_PRODUCTS_API_URL to: {SAVINGS_PRODUCTS_API_URL}", file=sys.stderr)
+    print(f"Updated INTEROP_PARTIES_API_URL to: {INTEROP_PARTIES_API_URL}", file=sys.stderr)
+    # # Test connectivity to the API base URL
+    # print("Testing connectivity to the API base URL...", file=sys.stderr)
+    # test_response = make_api_request("GET", API_BASE_URL, HEADERS)  
+    # print(f"Test response from API base URL: {test_response}", file=sys.stderr)
+    #sys.exit(0)
+
     for tenant_id, num_clients in TENANTS.items():
         print(f"Processing tenant: {tenant_id}", file=sys.stderr)
         
