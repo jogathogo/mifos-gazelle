@@ -219,7 +219,7 @@ function env_setup_local_cluster {
             install_nginx_local_cluster
             $UTILS_DIR/install-k9s.sh > /dev/null 2>&1
         fi
-        printf "\r==> local kubernetes v%s configured sucessfully for [%s]\n" \
+        printf "\r==> local kubernetes v%s configured  for %s \n" \
                   "$k8s_version" "$k8s_user"
         print_end_message
     elif [[ "$mode" == "cleanapps" ]]; then

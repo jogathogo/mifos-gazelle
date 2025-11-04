@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Make sure we can set the domain from config.ini
-SCRIPT_DIR=$( cd $(dirname "$0") ; pwd )
-config_dir="$( cd $(dirname "$SCRIPT_DIR")/../config ; pwd )"
-config_ini="$config_dir/config.ini"
-GAZELLE_DOMAIN=$(grep GAZELLE_DOMAIN "$config_ini" | cut -d '=' -f2 | tr -d " " )
-
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,14 +8,15 @@ BLUE='\033[0;34m'
 YELLOW='\033[0;33m'
 RESET='\033[0m'
 
-# API Configuration
-TRANSFER_URL="https://channel.$GAZELLE_DOMAIN/channel/transfer"
-MIFOS_CORE_API="http://mifos.$GAZELLE_DOMAIN/fineract-provider/api/v1"
+# API Configuration placeholders (will be set after parsing config)
+TRANSFER_URL=""
+MIFOS_CORE_API=""
 MIFOS_AUTH="mifos:password"
 
 function usage() {
 cat <<EOF
-Usage: $0 [-p <payer_msisdn>] [-r <payee_msisdn>] [-t <tenant_id>] [-d <payee_dfsp_id>] [-v]
+Usage: $0 [-f <config_file>] [-p <payer_msisdn>] [-r <payee_msisdn>] [-t <tenant_id>] [-d <payee_dfsp_id>] [-v]
+ -f Path to config.ini file (default: ../config/config.ini) [optional]
  -p Payer MSISDN (default: 0413356886) [optional]
  -r Payee MSISDN (default: 0495822412) [optional]
  -t Platform-TenantId (default: greenbank) [optional]
@@ -105,6 +100,11 @@ function lookup_client_name() {
 }
 
 # Defaults
+SCRIPT_DIR=$( cd $(dirname "$0") ; pwd )
+default_config_dir="$( cd $(dirname "$SCRIPT_DIR")/../config ; pwd )"
+default_config_ini="$default_config_dir/config.ini"
+config_ini=""  # Will be set after parsing options
+
 payer_msisdn="0413356886"
 payee_msisdn="0495822412"
 tenant_id="greenbank"
@@ -112,8 +112,9 @@ payee_dfsp_id="bluebank"
 debug=false
 
 # Parse options
-while getopts ":p:r:t:d:vh" opt; do
+while getopts ":f:p:r:t:d:vh" opt; do
     case $opt in
+        f) config_ini="$OPTARG" ;;
         p) payer_msisdn="$OPTARG" ;;
         r) payee_msisdn="$OPTARG" ;;
         t) tenant_id="$OPTARG" ;;
@@ -124,6 +125,42 @@ while getopts ":p:r:t:d:vh" opt; do
         :) echo "Option -$OPTARG requires an argument." >&2; usage; exit 1 ;;
     esac
 done
+
+# Set config file to default if not provided
+if [[ -z "$config_ini" ]]; then
+    config_ini="$default_config_ini"
+fi
+
+# Verify config file exists
+if [[ ! -f "$config_ini" ]]; then
+    echo -e "${RED}Error: Config file not found: $config_ini${RESET}" >&2
+    exit 1
+fi
+
+# Show which config file is being used if debug is enabled
+if [[ "$debug" == true ]]; then
+    echo -e "${BLUE}DEBUG - Using config file: $config_ini${RESET}"
+    echo ""
+fi
+
+# Read GAZELLE_DOMAIN from config file
+GAZELLE_DOMAIN=$(grep GAZELLE_DOMAIN "$config_ini" | cut -d '=' -f2 | tr -d " " )
+
+if [[ -z "$GAZELLE_DOMAIN" ]]; then
+    echo -e "${RED}Error: GAZELLE_DOMAIN not found in config file: $config_ini${RESET}" >&2
+    exit 1
+fi
+
+# Set API URLs now that we have the domain
+TRANSFER_URL="https://channel.$GAZELLE_DOMAIN/channel/transfer"
+MIFOS_CORE_API="http://mifos.$GAZELLE_DOMAIN/fineract-provider/api/v1"
+
+if [[ "$debug" == true ]]; then
+    echo -e "${BLUE}DEBUG - GAZELLE_DOMAIN: $GAZELLE_DOMAIN${RESET}"
+    echo -e "${BLUE}DEBUG - TRANSFER_URL: $TRANSFER_URL${RESET}"
+    echo -e "${BLUE}DEBUG - MIFOS_CORE_API: $MIFOS_CORE_API${RESET}"
+    echo ""
+fi
 
 # Lookup client names
 echo -e "${BLUE}=== Client Lookup ===${RESET}"
