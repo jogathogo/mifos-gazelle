@@ -27,6 +27,7 @@ function DeployMifosXfromYaml() {
     
     # Update FQDNs in values file and manifests
     echo "    Updating MifosX FQDNs manifest(s) to use domain $GAZELLE_DOMAIN"
+    update_fqdn "$MIFOSX_MANIFESTS_DIR/web-app-deployment.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
     update_fqdn "$MIFOSX_MANIFESTS_DIR/web-app-ingress.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
 
     # Restore the database dump before starting MifosX
@@ -70,11 +71,11 @@ function generateMifosXandVNextData {
     
     if [[ $result_vnext -eq 0 ]] && [[ $result_mifosx -eq 0 ]]; then
       echo -e "${BLUE}    Generating MifosX clients and accounts & registering associations with vNext Oracle ...${RESET}"
-      $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py > /dev/null 2>&1
+      run_as_user "$RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py -c \"$CONFIG_FILE_PATH\" " #> /dev/null 2>&1
       
       if [[ "$?" -ne 0 ]]; then
         echo -e "${RED}Error generating vNext clients and accounts ${RESET}"
-        echo " run $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py to investigate"
+        echo " run $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py -c $CONFIG_FILE_PATH to investigate"
         return 1 
       fi
       

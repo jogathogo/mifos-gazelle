@@ -336,7 +336,7 @@ function deleteApps() {
       "infra")
         printf "    deleting infrastructure  "
         deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
-        printf "                               [ok]\n"
+        printf "                       [ok]\n"
 
         ;;
       *)

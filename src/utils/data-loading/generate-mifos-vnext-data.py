@@ -17,6 +17,7 @@ import uuid
 import sys
 from pathlib import Path
 import configparser
+import argparse
 import base64 # Needed to decode the Authorization header if you want to see the credentials
 import urllib3 # Import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) # Disable InsecureRequestWarning
@@ -55,8 +56,8 @@ LAST_NAMES = [
 
 tenant_client_counter = {}
 
-# --- Global VURL / endpoints  ---
-API_BASE_URL = "https://mifos.mifos.gazelle.test/fineract-provider/api/v1"
+# --- Global URL / endpoints  ---
+API_BASE_URL = None
 CLIENTS_API_URL = None
 SAVINGS_API_URL = None
 SAVINGS_PRODUCTS_API_URL = None
@@ -550,40 +551,72 @@ def register_client_with_vnext(headers, tenant_id, mobile_number, currency="USD"
         print(f"Failed to register client with MSISDN {mobile_number} with vNext.", file=sys.stderr)
         return False
 
-
-# --- Main Execution ---
-if __name__ == "__main__":
-    # get the script directory and 
-    script_path = Path( __file__ ).absolute()
-    base_dir = script_path.parent.parent.parent.parent
-    print(f"Base directory determined as: {base_dir}", file=sys.stderr) 
-    config_file = base_dir / "config" / "config.ini" 
-    print(f"Configuration file path: {config_file}", file=sys.stderr)   
-    # Read the config file
+# --- Function to load configuration ---
+def load_config(config_file):
+    """Load and return configuration object"""
     config = configparser.ConfigParser()
-    config.read(config_file)
+    
+    if not config.read(config_file):
+        print(f"Error: Could not read config file: {config_file}", file=sys.stderr)
+        sys.exit(1)
+    
+    return config
 
-    # Get the GAZELLE_DOMAIN value
-    gazelle_domain = config.get('general', 'GAZELLE_DOMAIN')    
-    print(f"GAZELLE_DOMAIN from config: {gazelle_domain}", file=sys.stderr)
+# function to get the gazelle domain name from the config
+# returns: the gazelle domain string
+def get_gazelle_domain(config):
+    try:
+        gazelle_domain = config.get('general', 'GAZELLE_DOMAIN')
+        print(f"GAZELLE_DOMAIN from config: {gazelle_domain}", file=sys.stderr)
+        return gazelle_domain
+    except (configparser.NoSectionError, configparser.NoOptionError) as e:
+        print(f"Error reading config: {e}", file=sys.stderr)
+        sys.exit(1) 
 
-    # Update the API_BASE_URLs based on the GAZELLE_DOMAIN
+# function to set the global URLS for the API endpoints
+def set_global_urls(gazelle_domain):
+    global API_BASE_URL, CLIENTS_API_URL, SAVINGS_API_URL, SAVINGS_PRODUCTS_API_URL, INTEROP_PARTIES_API_URL, VNEXT_URL
     API_BASE_URL = f"https://mifos.{gazelle_domain}/fineract-provider/api/v1"
+    print(f"Setting API_BASE_URL to: {API_BASE_URL}", file=sys.stderr)
     CLIENTS_API_URL = f"{API_BASE_URL}/clients"
     SAVINGS_API_URL = f"{API_BASE_URL}/savingsaccounts"
     SAVINGS_PRODUCTS_API_URL = f"{API_BASE_URL}/savingsproducts"
     INTEROP_PARTIES_API_URL = f"{API_BASE_URL}/interoperation/parties/MSISDN"   
     VNEXT_URL=f"http://vnextadmin.{gazelle_domain}/_interop/participants/MSISDN/{{mobile_number}}"
-    print(f"Updated API_BASE_URL to: {API_BASE_URL}", file=sys.stderr)  
-    print(f"Updated CLIENTS_API_URL to: {CLIENTS_API_URL}", file=sys.stderr)
-    print (f"Updated SAVINGS_API_URL to: {SAVINGS_API_URL}", file=sys.stderr)
-    print(f"Updated SAVINGS_PRODUCTS_API_URL to: {SAVINGS_PRODUCTS_API_URL}", file=sys.stderr)
-    print(f"Updated INTEROP_PARTIES_API_URL to: {INTEROP_PARTIES_API_URL}", file=sys.stderr)
-    # # Test connectivity to the API base URL
-    # print("Testing connectivity to the API base URL...", file=sys.stderr)
-    # test_response = make_api_request("GET", API_BASE_URL, HEADERS)  
-    # print(f"Test response from API base URL: {test_response}", file=sys.stderr)
-    #sys.exit(0)
+    # print(f"Updated API_BASE_URL to: {API_BASE_URL}", file=sys.stderr)  
+    # print(f"Updated CLIENTS_API_URL to: {CLIENTS_API_URL}", file=sys.stderr)
+    # print (f"Updated SAVINGS_API_URL to: {SAVINGS_API_URL}", file=sys.stderr)
+    # print(f"Updated SAVINGS_PRODUCTS_API_URL to: {SAVINGS_PRODUCTS_API_URL}", file=sys.stderr)
+    # print(f"Updated INTEROP_PARTIES_API_URL to: {INTEROP_PARTIES_API_URL}", file=sys.stderr)
+
+# --- Main Execution -------------------------------------------------
+# Run the main logic
+# Note: Adjusted to read config and set URLs before processing tenants
+#----------------------------------------------------------------------
+if __name__ == "__main__":
+    # get the script directory and 
+    script_path = Path( __file__ ).absolute()
+    base_dir = script_path.parent.parent.parent.parent
+    print(f"Base directory determined as: {base_dir}", file=sys.stderr) 
+
+    # Default config file path
+    default_config = base_dir / "config" / "config.ini"
+
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Script description here')
+    parser.add_argument('--config', '-c', 
+                       type=Path,
+                       default=default_config,
+                       help=f'Path to the config.ini file (default: {default_config})')
+    
+    args = parser.parse_args()
+    
+    print(f"Configuration file path: {args.config}", file=sys.stderr)
+    
+    # Load config
+    config = load_config(args.config)
+    gazelle_domain=get_gazelle_domain(config)
+    set_global_urls(gazelle_domain)
 
     for tenant_id, num_clients in TENANTS.items():
         print(f"Processing tenant: {tenant_id}", file=sys.stderr)
