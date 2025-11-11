@@ -43,8 +43,9 @@ function deployvNext() {
     applyKubeManifests "$folder" "$VNEXT_NAMESPACE" #>/dev/null 2>&1
     if [ "$index" -eq 0 ]; then
       echo -e "${BLUE}    Waiting for vnext cross cutting concerns to come up${RESET}"
-      sleep 10
-      echo -e "    Proceeding ..."
+      # run_as_user "kubectl wait --for=condition=ready pod --all -n infra --timeout=1000s"
+      wait_for_pods_ready "$INFRA_NAMESPACE"
+      echo -e "    Infra is up & running proceeding ..."
     fi
   done
 
