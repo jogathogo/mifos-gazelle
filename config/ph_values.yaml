@@ -1,4 +1,9 @@
 
+# account-mapper:
+#   image: "openjdk:26-ea-17-jdk-trixie"  # Use OpenJDK base image
+#   imagePullPolicy: IfNotPresent
+#   enabled: false
+
 ph-ee-engine:
   # we use elastic and kibana from the infra namespace 
   elasticsearch:
@@ -249,6 +254,29 @@ ph-ee-engine:
       contactpoint: "http://ph-ee-operations-app:80"
       endpoints:
         batch_transaction: "/api/v1/batch/transactions"
+    config:
+      partylookup:
+        enable: true
+      approval:
+        enable: false
+      ordering:
+        enable: false
+        field: ""
+      splitting:
+        enable: true
+        sub_batch_size: 5
+      formatting:
+        enable: false
+        standard: "DEFAULT"
+      mergeback:
+        enable: true
+      backpressure:
+        enable: false
+      completion_threshold_check:
+        enable: true
+        completion_rate: 95
+      deduplication:
+        enabled: true      
 
     deployment:
       extraEnvs:
@@ -386,4 +414,20 @@ ph-ee-engine:
       cpu: "50m"
 
   ph_ee_connector_gsma:
-    enabled: false
+    enabled: true
+    image: docker.io/openmf/ph-ee-connector-gsma-mm:v1.3.0-gazelle-1.1.0
+
+
+  ph_ee_connector_ams_mifos:
+    enabled: true
+    deployment:
+      extraEnvs:
+        - name: LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_BOOT_CONTEXT_CONFIG
+          value: "DEBUG"
+        - name: LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_CORE_ENV
+          value: "DEBUG"
+        - name: LOGGING_LEVEL_ROOT
+          value: "DEBUG"
+        # For debugging keystore loading issues when running from hostpath mounted code
+        - name: AMS_LOCAL_KEYSTORE_PATH
+          value: "/app/keystore.jks"

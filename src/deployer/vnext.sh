@@ -128,6 +128,7 @@ function vnext_restore_demo_data {
     # Get MongoDB pod name using run_as_user
     local mongopod
     mongopod=$(run_as_user "kubectl get pods --namespace \"$namespace\" | grep -i mongodb | cut -d \" \" -f1") || { echo -e "\n ** Error: Failed to retrieve MongoDB pod name"; rm -rf "${temp_dir:-}"; return 1; }
+    echo "    TDDEBUG> MongoDB pod name: [ $mongopod ] "
     if [ -z "$mongopod" ]; then
         echo -e "\n ** Error: No MongoDB pod found in namespace '$namespace'"
         rm -rf "${temp_dir:-}"
@@ -143,14 +144,15 @@ function vnext_restore_demo_data {
         return 1
     fi
 
-    if ! run_as_user "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" > /dev/null 2>&1 ;  then
+    #if ! su - "$k8s_user" -c "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" > /dev/null 2>&1 ;  then
+    if ! su - "$k8s_user" -c "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" ;  then
         echo -e "\n ** Error: Failed to copy $mongo_dump_file to pod $mongopod"
-        rm -rf "${temp_dir:-}"
+        #rm -rf "${temp_dir:-}"
         return 1
     fi
 
     # Execute mongorestore using run_as_user
-    if ! run_as_user "kubectl exec --namespace \"$namespace\" --stdin --tty \"$mongopod\" -- mongorestore -u root -p \"$mongo_root_pw\" --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin" >/dev/null 2>&1; then
+    if ! run_as_user "kubectl exec --namespace \"$namespace\" --stdin --tty \"$mongopod\" -- mongorestore -u root -p \"$mongo_root_pw\" --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin" ; then
         echo -e "\n ** Error: mongorestore command failed"
         rm -rf "${temp_dir:-}"
         return 1

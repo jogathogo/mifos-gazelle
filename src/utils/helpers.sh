@@ -27,7 +27,7 @@ function check_sudo() {
 function run_as_user() {
     local command="$1"
     # Debug: Log the command being executed
-    logWithVerboseCheck "$debug" debug "Running as $k8s_user: $command"
+    #logWithVerboseCheck "$debug" debug "Running as $k8s_user: $command"
     
     # Execute the command as k8s_user and capture output and exit code
     local output

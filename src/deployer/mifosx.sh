@@ -11,7 +11,9 @@
 function DeployMifosXfromYaml() {
     manifests_dir=$1
     timeout_secs=${2:-600}  # Default timeout of 10 minutes if not specified
+    # generateMifosXandVNextData
 
+    # exit 1
     if is_app_running  "$MIFOSX_NAMESPACE"; then
       if [[ "$redeploy" == "false" ]]; then
         echo "    MifosX application is already deployed. Skipping deployment."
@@ -71,8 +73,14 @@ function generateMifosXandVNextData {
     
     if [[ $result_vnext -eq 0 ]] && [[ $result_mifosx -eq 0 ]]; then
       echo -e "${BLUE}    Generating MifosX clients and accounts & registering associations with vNext Oracle ...${RESET}"
-      run_as_user "$RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py -c \"$CONFIG_FILE_PATH\" " #> /dev/null 2>&1
-      
+      echo "    TDDEBUG> Using config file at: $CONFIG_FILE_PATH"
+      #nginx_pod_name=$(run_as_user "kubectl get pods -n default --no-headers -o custom-columns=\":metadata.name\"" | grep nginx | head -n 1)
+      set -x 
+      results=$(run_as_user "$RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py -c \"$CONFIG_FILE_PATH\" ") #> /dev/null 2>&1
+      echo "    TDDEBUG> Results of data generation:"
+      echo "$results"
+      set +x 
+
       if [[ "$?" -ne 0 ]]; then
         echo -e "${RED}Error generating vNext clients and accounts ${RESET}"
         echo " run $RUN_DIR/src/utils/data-loading/generate-mifos-vnext-data.py -c $CONFIG_FILE_PATH to investigate"

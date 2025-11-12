@@ -16,7 +16,7 @@ MIFOS_AUTH="mifos:password"
 function usage() {
 cat <<EOF
 Usage: $0 [-f <config_file>] [-p <payer_msisdn>] [-r <payee_msisdn>] [-t <tenant_id>] [-d <payee_dfsp_id>] [-v]
- -f Path to config.ini file (default: ../config/config.ini) [optional]
+ -c Path to config.ini file (default: ../config/config.ini) [optional]
  -p Payer MSISDN (default: 0413356886) [optional]
  -r Payee MSISDN (default: 0495822412) [optional]
  -t Platform-TenantId (default: greenbank) [optional]
@@ -112,9 +112,9 @@ payee_dfsp_id="bluebank"
 debug=false
 
 # Parse options
-while getopts ":f:p:r:t:d:vh" opt; do
+while getopts ":c:p:r:t:d:vh" opt; do
     case $opt in
-        f) config_ini="$OPTARG" ;;
+        c) config_ini="$OPTARG" ;;
         p) payer_msisdn="$OPTARG" ;;
         r) payee_msisdn="$OPTARG" ;;
         t) tenant_id="$OPTARG" ;;
@@ -145,6 +145,7 @@ fi
 
 # Read GAZELLE_DOMAIN from config file
 GAZELLE_DOMAIN=$(grep GAZELLE_DOMAIN "$config_ini" | cut -d '=' -f2 | tr -d " " )
+echo "🔧 GAZELLE_DOMAIN: $GAZELLE_DOMAIN" 
 
 if [[ -z "$GAZELLE_DOMAIN" ]]; then
     echo -e "${RED}Error: GAZELLE_DOMAIN not found in config file: $config_ini${RESET}" >&2
@@ -165,6 +166,10 @@ fi
 # Lookup client names
 echo -e "${BLUE}=== Client Lookup ===${RESET}"
 payer_name=$(lookup_client_name "$payer_msisdn" "$tenant_id" "payer")
+if [[ $? -ne 0 ]]; then
+    echo -e "${RED}Error: Unable to find payer with MSISDN $payer_msisdn in tenant $tenant_id${RESET}" >&2
+    exit 1
+fi
 
 # For payee, we need to determine the correct tenant
 # If payee_dfsp_id is different from tenant_id, use payee_dfsp_id as tenant

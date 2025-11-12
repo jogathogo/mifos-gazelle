@@ -358,9 +358,12 @@ function deleteApps() {
 function deployApps() {
   local appsToDeploy="$2"
   local redeploy="${3:-false}"
-  
+  # DEBUG 
+  # generateMifosXandVNextData
+  # exit 1 
   #echo "Redeploy mode: $redeploy"
   #echo -e "${BLUE}Starting deployment for applications: $appsToDeploy...${RESET}"
+  # DEBUG 
 
   # Special handling for 'all' as a block-deploy
   if [[ "$appsToDeploy" == "all" ]]; then
@@ -380,9 +383,13 @@ function deployApps() {
           ;;
         "vnext")
           deployInfrastructure "false"
+          # vnext_restore_demo_data $CONFIG_DIR "mongodump.gz" $INFRA_NAMESPACE
+          # exit 1 
           deployvNext
           ;;
         "mifosx")
+          # generateMifosXandVNextData 
+          # exit 1
           if [[ "$redeploy" == "true" ]]; then 
             echo "Removing current mifosx and redeploying"
             deleteApps 1 "mifosx"
