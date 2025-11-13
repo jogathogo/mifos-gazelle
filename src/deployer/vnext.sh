@@ -144,10 +144,9 @@ function vnext_restore_demo_data {
         return 1
     fi
 
-    #if ! su - "$k8s_user" -c "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" > /dev/null 2>&1 ;  then
-    if ! su - "$k8s_user" -c "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" ;  then
+    if ! su - "$k8s_user" -c "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" > /dev/null 2>&1 ;  then
         echo -e "\n ** Error: Failed to copy $mongo_dump_file to pod $mongopod"
-        #rm -rf "${temp_dir:-}"
+        rm -rf "${temp_dir:-}"
         return 1
     fi
 

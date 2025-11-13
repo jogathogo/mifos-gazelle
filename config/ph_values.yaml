@@ -429,5 +429,5 @@ ph-ee-engine:
         - name: LOGGING_LEVEL_ROOT
           value: "DEBUG"
         # For debugging keystore loading issues when running from hostpath mounted code
-        - name: AMS_LOCAL_KEYSTORE_PATH
-          value: "/app/keystore.jks"
+        # - name: AMS_LOCAL_KEYSTORE_PATH
+        #   value: "/app/keystore.jks"
