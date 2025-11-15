@@ -38,7 +38,7 @@ function deployPH(){
   if are_bpmns_loaded $bpmns_to_deploy ; then
     echo "    BPMN diagrams are already loaded - skipping load "
   else
-    deployBPMS
+    deploy_bpmns
   fi
   echo -e "\n${GREEN}============================"
   echo -e "Paymenthub Deployed"
