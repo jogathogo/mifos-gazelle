@@ -175,6 +175,7 @@ function deployInfrastructure() {
   # ensure we use the right domain name  in infra chart
   echo "    Updating FQDNs in INFRA Helm chart values.yaml to use domain $GAZELLE_DOMAIN"
   update_fqdn "$INFRA_CHART_DIR/values.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
+  update_fqdn "$INFRA_CHART_DIR/values.yaml" "mifos.gazelle.localhost" "$GAZELLE_DOMAIN" 
 
   # Update helm dependencies for infra chart
   # run_as_user "cd $INFRA_CHART_DIR && helm dep update" # >> /dev/null 2>&1
