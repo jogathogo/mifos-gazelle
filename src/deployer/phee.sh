@@ -60,6 +60,7 @@ function prepare_payment_hub_chart() {
   update_fqdn "$PH_VALUES_FILE" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
   update_fqdn "$PH_VALUES_FILE" "mifos.gazelle.localhost" "$GAZELLE_DOMAIN" 
   update_fqdn_batch "$APPS_DIR/ph_template" "mifos.gazelle.test" "$GAZELLE_DOMAIN"
+  update_fqdn_batch "$APPS_DIR/ph_template" "mifos.gazelle.localhost" "$GAZELLE_DOMAIN"
   
   # Run for ph-ee-engine
   phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"

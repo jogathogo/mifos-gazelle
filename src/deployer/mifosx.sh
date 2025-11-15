@@ -25,10 +25,12 @@ function DeployMifosXfromYaml() {
     createNamespace "$MIFOSX_NAMESPACE"
     cloneRepo "$MIFOSX_BRANCH" "$MIFOSX_REPO_LINK" "$APPS_DIR" "$MIFOSX_REPO_DIR"
     
-    # Update FQDNs in values file and manifests
+    # Update FQDNs in values file and manifests 
     echo "    Updating MifosX FQDNs manifest(s) to use domain $GAZELLE_DOMAIN"
     update_fqdn "$MIFOSX_MANIFESTS_DIR/web-app-deployment.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
     update_fqdn "$MIFOSX_MANIFESTS_DIR/web-app-ingress.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
+    update_fqdn "$MIFOSX_MANIFESTS_DIR/web-app-deployment.yaml" "mifos.gazelle.localhost" "$GAZELLE_DOMAIN" 
+    update_fqdn "$MIFOSX_MANIFESTS_DIR/web-app-ingress.yaml" "mifos.gazelle.localhost" "$GAZELLE_DOMAIN" 
 
     # Restore the database dump before starting MifosX
     # Assumes FINERACT_LIQUIBASE_ENABLED=false in fineract deployment

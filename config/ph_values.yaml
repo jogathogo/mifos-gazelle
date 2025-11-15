@@ -388,7 +388,7 @@ ph-ee-engine:
       cpu: "50m"
 
   ph_ee_connector_gsma:
-    enabled: true
+    enabled: false
     image: docker.io/openmf/ph-ee-connector-gsma-mm:v1.3.0-gazelle-1.1.0
 
 
