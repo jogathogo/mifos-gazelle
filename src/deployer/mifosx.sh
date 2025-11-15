@@ -11,9 +11,7 @@
 function DeployMifosXfromYaml() {
     manifests_dir=$1
     timeout_secs=${2:-600}  # Default timeout of 10 minutes if not specified
-    # generateMifosXandVNextData
 
-    # exit 1
     if is_app_running  "$MIFOSX_NAMESPACE"; then
       if [[ "$redeploy" == "false" ]]; then
         echo "    MifosX application is already deployed. Skipping deployment."

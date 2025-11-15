@@ -285,13 +285,18 @@ function validateInputs {
         fi
 
         echo "DEBUG : Apps to process: $apps"
-        # Ensure 'infra' is first app if present
         if [[ " $apps " =~ " infra " ]]; then
-            apps="infra $(echo $apps | sed 's/infra//')"
-            apps=$(echo $apps | xargs) # trim any extra spaces
+            if [[ "$mode" == "deploy" ]]; then
+                # for mode = deploy ensure 'infra' is first app if present
+                    apps="infra $(echo $apps | sed 's/infra//')"
+                    apps=$(echo $apps | xargs) # trim any extra spaces
+            else # mode = cleanapps
+                # for mode = cleanapps ensure 'infra' is last app if present
+                    apps="$(echo $apps | sed 's/infra//') infra"
+                    apps=$(echo $apps | xargs) # trim any extra spaces
+            fi  
         fi
         echo "DEBUG Final apps to process order: $apps"
-        
     fi
 
     if [[ -n "$debug" && "$debug" != "true" && "$debug" != "false" ]]; then

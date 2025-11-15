@@ -302,38 +302,38 @@ EOF
 # Example: deleteApps _ "mifosx vnext"
 #------------------------------------------------------------
 function deleteApps() {
-  local appsToDelete="$2"
+  local appsToDelete="$1"
   
   for app in $appsToDelete; do
     echo -e "${BLUE}Deleting application: $app...${RESET}"
-    # case "$app" in
-    #   "vnext")
-    #     printf "    deleting vnext "
-    #     deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
-    #     printf "                                 [ok]\n"
-    #     ;;
-    #   "mifosx")
-    #     printf "    deleting mifosx"
-    #     deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
-    #     printf "                                 [ok]\n"
-    #     ;;
-    #   "phee")
-    #     printf "    deleting paymenthub "
-    #     deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-    #     printf "                            [ok]\n"
-    #     ;;
-    #   "infra")
-    #     printf "    deleting infrastructure  "
-    #     deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
-    #     printf "                       [ok]\n"
+    case "$app" in
+      "vnext")
+        printf "    deleting vnext "
+        deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
+        printf "                                 [ok]\n"
+        ;;
+      "mifosx")
+        printf "    deleting mifosx"
+        deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
+        printf "                                 [ok]\n"
+        ;;
+      "phee")
+        printf "    deleting paymenthub "
+        deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
+        printf "                            [ok]\n"
+        ;;
+      "infra")
+        printf "    deleting infrastructure  "
+        deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
+        printf "                       [ok]\n"
 
-    #     ;;
-    #   *)
-    #     echo -e "${RED}Invalid app '$app' for deletion. This should have been caught by validateInputs.${RESET}"
-    #     showUsage
-    #     exit 1
-    #     ;;
-    # esac
+        ;;
+      *)
+        echo -e "${RED}Invalid app '$app' for deletion. This should have been caught by validateInputs.${RESET}"
+        showUsage
+        exit 1
+        ;;
+    esac
   done
   
   print_cleanup_end_message
@@ -357,16 +357,16 @@ function deployApps() {
         deployInfrastructure "$redeploy"
         ;;
       "vnext")
-        deployInfrastructure "false"
+        deployInfrastructure "false"  # deploy infra if not already there even if redeploy=true
         deployvNext
         ;;
       "mifosx")
-        if [[ "$redeploy" == "true" ]]; then 
-          echo "Removing current mifosx and redeploying"
-          deleteApps 1 "mifosx"
+        # if [[ "$redeploy" == "true" ]]; then 
+        #   #echo "Removing current mifosx and redeploying"
+        #   deleteApps "mifosx"
           
-        fi 
-        deployInfrastructure "false"
+        # fi 
+        deployInfrastructure "false"  # deploy infra if not already there even if redeploy=true
         DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR" 
         generateMifosXandVNextData
         ;;

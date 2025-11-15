@@ -128,7 +128,6 @@ function vnext_restore_demo_data {
     # Get MongoDB pod name using run_as_user
     local mongopod
     mongopod=$(run_as_user "kubectl get pods --namespace \"$namespace\" | grep -i mongodb | cut -d \" \" -f1") || { echo -e "\n ** Error: Failed to retrieve MongoDB pod name"; rm -rf "${temp_dir:-}"; return 1; }
-    echo "    TDDEBUG> MongoDB pod name: [ $mongopod ] "
     if [ -z "$mongopod" ]; then
         echo -e "\n ** Error: No MongoDB pod found in namespace '$namespace'"
         rm -rf "${temp_dir:-}"
@@ -151,7 +150,7 @@ function vnext_restore_demo_data {
     fi
 
     # Execute mongorestore using run_as_user
-    if ! run_as_user "kubectl exec --namespace \"$namespace\" --stdin --tty \"$mongopod\" -- mongorestore -u root -p \"$mongo_root_pw\" --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin" ; then
+    if ! run_as_user "kubectl exec --namespace \"$namespace\" --stdin --tty \"$mongopod\" -- mongorestore -u root -p \"$mongo_root_pw\" --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin" > /dev/null 2>&1 ; then
         echo -e "\n ** Error: mongorestore command failed"
         rm -rf "${temp_dir:-}"
         return 1
