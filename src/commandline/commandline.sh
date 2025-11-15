@@ -2,7 +2,6 @@
 
 source "$RUN_DIR/src/utils/logger.sh" || { echo "FATAL: Could not source logger.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/utils/helpers.sh" || { echo "FATAL: Could not source helpers.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
-#source "$RUN_DIR/src/configurationManager/config.sh" || { echo "FATAL: Could not source config.sh. Check RUN_DIR: $RUN_DIR"; exit 1; } 
 source "$RUN_DIR/src/environmentSetup/environmentSetup.sh" || { echo "FATAL: Could not source environmentSetup.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 source "$RUN_DIR/src/deployer/deployer.sh" || { echo "FATAL: Could not source deployer.sh. Check RUN_DIR: $RUN_DIR"; exit 1; }
 
@@ -175,13 +174,13 @@ function welcome {
 function showUsage {
     echo "
     USAGE: $0 [-f <config_file_path>] -m [mode] -u [user] -a [apps] -e [environment] -d [true/false] -r [true/false]
-    Example 1 : sudo $0 -m deploy -u \$USER -d true          # install mifos-gazelle with debug mode and user \$USER
-    Example 2 : sudo $0 -m cleanapps -u \$USER -d true       # delete apps, leave environment with debug mode and user \$USER
-    Example 3 : sudo $0 -m cleanall -u \$USER                # delete all apps, all local Kubernetes artifacts, and server
-    Example 4 : sudo $0 -m deploy -u \$USER -a phee          # install PHEE only, user \$USER
-    Example 5 : sudo $0 -m deploy -u \$USER -a all           # install all core apps (vNext, PHEE, and MifosX) with user \$USER
-    Example 6 : sudo $0 -m deploy -u \$USER -a \"mifosx,vnext\" # install MifosX and vNext
-    Example 7 : sudo $0 -f /opt/my_config.ini                # Use a custom config file
+    Example 1 : sudo $0                                          # deploy all apps enabled in config.ini and user \$USER from config.ini
+    Example 2 : sudo $0 -m cleanapps  -d true                    # delete all apps enabled in config.init, leave environment with debug mode \$USER from config.ini
+    Example 3 : sudo $0 -m cleanall                              # delete all apps, all local Kubernetes artifacts, and local kubernetes server
+    Example 4 : sudo $0 -a phee                                  # deploy PHEE only, user \$USER from config.ini
+    Example 6 : sudo $0 -a \"mifosx,vnext\"                        # deploy MifosX and vNext only 
+    Example 7 : sudo $0 -f /opt/my_config.ini                    # Use a custom config file
+    Example 8 : sudo $0 -a \"phee,mifosx\" -e remote -d true       # deploy PHEE and MifosX on remote cluster with debug mode
 
     Options:
     -f config_file_path .. Specify an alternative config.ini file path (optional)
@@ -193,6 +192,26 @@ function showUsage {
     -r redeploy .......... Force redeployment of apps (true|false, optional, default=true)
     -h|H ................. Display this message
     "
+}
+
+#------------------------------------------------------------------------------
+# Function : check_duplicates
+# Description: Checks for duplicate entries in an array.
+# Parameters:
+#   $1 - Name of the array variable to check (passed by name).
+#------------------------------------------------------------------------------
+function check_duplicates() {
+    local -n arr=$1
+    declare -A seen
+    
+    for app in "${arr[@]}"; do
+        if [[ ${seen[$app]} ]]; then
+            #echo "Error: Duplicate entry found: '$app'"
+            return 1
+        fi
+        seen[$app]=1
+    done
+    return 0
 }
 
 #------------------------------------------------------------------------------
@@ -223,12 +242,14 @@ function validateInputs {
             echo "No specific apps provided with -a flag or config file. Defaulting to 'all'."
             apps="all"
         fi
-        echo "DEBUG TODO -> ALL VALID APPS" 
+        # TODO -> ALL VALID APPS should be from enabled list from config.ini  
         local ALL_VALID_APPS="infra vnext phee mifosx all"
-        local CORE_APPS="vnext phee mifosx"
+        local CORE_APPS="infra vnext phee mifosx"
 
         local current_apps_array
         IFS=' ' read -r -a current_apps_array <<< "$apps"
+        echo "DEBUG TODO -> current_apps_array: ${current_apps_array[*]}"
+
 
         local found_all_keyword="false"
         local specific_apps_count=0
@@ -246,6 +267,13 @@ function validateInputs {
             fi
         done
 
+        # Check for duplicate apps
+        if ! check_duplicates current_apps_array; then
+            echo "Error: Duplicate applications specified in -a flag."
+            showUsage
+            exit 1
+        fi
+
         if [[ "$found_all_keyword" == "true" ]]; then
             if [[ "$specific_apps_count" -gt 0 ]]; then
                 echo "Error: Cannot combine 'all' with specific applications. If 'all' is specified, no other apps should be listed."
@@ -255,6 +283,15 @@ function validateInputs {
             apps="$CORE_APPS"
             logWithLevel "$INFO" "Expanded 'all' keyword to: $apps"
         fi
+
+        echo "DEBUG : Apps to process: $apps"
+        # Ensure 'infra' is first app if present
+        if [[ " $apps " =~ " infra " ]]; then
+            apps="infra $(echo $apps | sed 's/infra//')"
+            apps=$(echo $apps | xargs) # trim any extra spaces
+        fi
+        echo "DEBUG Final apps to process order: $apps"
+        
     fi
 
     if [[ -n "$debug" && "$debug" != "true" && "$debug" != "false" ]]; then
@@ -289,11 +326,6 @@ function validateInputs {
             showUsage
             exit 1
         fi
-        # KUBECONFIG="$kubeconfig_path" su - "$k8s_user" -c "kubectl version" >/dev/null 2>&1
-        # if [[ $? -ne 0 ]]; then
-        #     echo "Error: Cannot connect to the Kubernetes cluster using kubeconfig at '$kubeconfig_path'. Please verify the file and cluster accessibility."
-        #     exit 1
-        # fi
     fi
 
     if [[ ! " $linux_os_list " =~ " Ubuntu " ]]; then
@@ -423,11 +455,11 @@ function main {
         echo -e "======================================================================================================"
         echo -e "${RESET}"
         env_setup_main "$mode"
-        deployApps "$mifosx_instances" "$apps" "$redeploy"
+        deployApps "$apps" "$redeploy"
     elif [ "$mode" == "cleanapps" ]; then
         logWithVerboseCheck "$debug" "$INFO" "Cleaning up Mifos Gazelle applications only"
         env_setup_main "$mode"
-        deleteApps "$mifosx_instances" "$apps"
+        deleteApps "$apps"
     elif [ "$mode" == "cleanall" ]; then
         env_setup_main "$mode"
         # env_setup_main will not remove remote cluster so need to run deleteApps

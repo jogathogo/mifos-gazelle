@@ -292,7 +292,7 @@ kubectl get pods -n vnext         # For testing mojaloop vNext
 kubectl get pods -n paymenthub    # For testing PaymentHub EE
 kubectl get pods -n mifosx        # For testing MifosX
 
-or install k9s by executing ./src/utils/install-k9s.sh in this terminal window
+or using k9s with $HOME/local/bin/k9s <cr> 
 EOF
 }
 
@@ -303,48 +303,37 @@ EOF
 #------------------------------------------------------------
 function deleteApps() {
   local appsToDelete="$2"
-
-  # if [[ "$appsToDelete" == "all" ]]; then
-  #   echo "Deleting all applications and related resources."
-  #   deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
-  #   deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
-  #   deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-  #   deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
-  #   deleteResourcesInNamespaceMatchingPattern "default"
-  #   return 0
-  # fi
-  
-  #printf "      %s\n" "$appsToDelete"
   
   for app in $appsToDelete; do
-    case "$app" in
-      "vnext")
-        printf "    deleting vnext "
-        deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
-        printf "                                 [ok]\n"
-        ;;
-      "mifosx")
-        printf "    deleting mifosx"
-        deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
-        printf "                                 [ok]\n"
-        ;;
-      "phee")
-        printf "    deleting paymenthub "
-        deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-        printf "                            [ok]\n"
-        ;;
-      "infra")
-        printf "    deleting infrastructure  "
-        deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
-        printf "                       [ok]\n"
+    echo -e "${BLUE}Deleting application: $app...${RESET}"
+    # case "$app" in
+    #   "vnext")
+    #     printf "    deleting vnext "
+    #     deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
+    #     printf "                                 [ok]\n"
+    #     ;;
+    #   "mifosx")
+    #     printf "    deleting mifosx"
+    #     deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
+    #     printf "                                 [ok]\n"
+    #     ;;
+    #   "phee")
+    #     printf "    deleting paymenthub "
+    #     deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
+    #     printf "                            [ok]\n"
+    #     ;;
+    #   "infra")
+    #     printf "    deleting infrastructure  "
+    #     deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
+    #     printf "                       [ok]\n"
 
-        ;;
-      *)
-        echo -e "${RED}Invalid app '$app' for deletion. This should have been caught by validateInputs.${RESET}"
-        showUsage
-        exit 1
-        ;;
-    esac
+    #     ;;
+    #   *)
+    #     echo -e "${RED}Invalid app '$app' for deletion. This should have been caught by validateInputs.${RESET}"
+    #     showUsage
+    #     exit 1
+    #     ;;
+    # esac
   done
   
   print_cleanup_end_message
@@ -352,62 +341,46 @@ function deleteApps() {
 
 #------------------------------------------------------------
 # Description : Orchestrates deployment of apps (infra, vnext, etc.).
-# Usage : deployApps <ignored> <"app1 app2"|all> [redeploy]
+# Usage : deployApps <"app1 app2"... > [redeploy]
 # Example: deployApps _ "vnext mifosx" true
 #------------------------------------------------------------
 function deployApps() {
-  local appsToDeploy="$2"
-  local redeploy="${3:-false}"
-  # DEBUG 
-  # generateMifosXandVNextData
-  # exit 1 
-  #echo "Redeploy mode: $redeploy"
-  #echo -e "${BLUE}Starting deployment for applications: $appsToDeploy...${RESET}"
-  # DEBUG 
+  local appsToDeploy="$1"
+  local redeploy="${2:-false}"
 
-  # Special handling for 'all' as a block-deploy
-  if [[ "$appsToDeploy" == "all" ]]; then
-    echo -e "${BLUE}Deploying all apps...${RESET}"
-    deployInfrastructure "$redeploy"
-    deployvNext
-    deployPH
-    DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR"
-    deploy_bpmns # deploy the BPMN processes to MifosX BPM Suite
-    generateMifosXandVNextData
-  else
-    # Process each application in the space-separated list
-    for app in $appsToDeploy; do      
-      case "$app" in
-        "infra")
-          deployInfrastructure "$redeploy"
-          ;;
-        "vnext")
-          deployInfrastructure "false"
-          deployvNext
-          ;;
-        "mifosx")
-          if [[ "$redeploy" == "true" ]]; then 
-            echo "Removing current mifosx and redeploying"
-            deleteApps 1 "mifosx"
-            
-          fi 
-          deployInfrastructure "false"
-          DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR" 
-          generateMifosXandVNextData
-          ;;
-        "phee")
-          deployInfrastructure "false"
-          deployPH
-          ;;
-        *)
-          echo -e "${RED}Error: Unknown application '$app' in deployment list. This should have been caught by validation.${RESET}"
-          showUsage
-          exit 1
-          ;;
-      esac
-    done
-
-  fi
+  echo "Starting deployment for applications: $appsToDeploy..."
+  # Process each application in the space-separated list
+  for app in $appsToDeploy; do     
+    echo -e "${BLUE}Deploying application: $app...${RESET}"  
+    case "$app" in
+      "infra")
+        deployInfrastructure "$redeploy"
+        ;;
+      "vnext")
+        deployInfrastructure "false"
+        deployvNext
+        ;;
+      "mifosx")
+        if [[ "$redeploy" == "true" ]]; then 
+          echo "Removing current mifosx and redeploying"
+          deleteApps 1 "mifosx"
+          
+        fi 
+        deployInfrastructure "false"
+        DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR" 
+        generateMifosXandVNextData
+        ;;
+      "phee")
+        deployInfrastructure "false"
+        deployPH
+        ;;
+      *)
+        echo -e "${RED}Error: Unknown application '$app' in deployment list. This should have been caught by validation.${RESET}"
+        showUsage
+        exit 1
+        ;;
+    esac
+  done
 
   print_deployment_end_message
 }

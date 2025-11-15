@@ -6,7 +6,6 @@
 # Description: Deploys PaymentHub EE using Helm charts.
 #------------------------------------------------------------------------------
 function deployPH(){
-  # TODO make this a global variable
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
   pheeEngineChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
 
