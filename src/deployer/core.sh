@@ -60,6 +60,31 @@ function is_app_running() {
     fi
 } # end of is_app_running
 
+function wait_for_pods_ready() {
+    echo "    wait_for_pods_ready function is triggered"
+    local namespace="$1"
+    echo "    Waiting for "$namespace" to be stable..."
+
+    if [ $? -ne 0 ]; then
+      echo -e "${RED} $namespace failed to stabilize. Exiting.${RESET}"
+      exit 1
+    fi
+    STABLE_COUNT=0
+    
+    while [ $STABLE_COUNT -lt 3 ]; do
+      NOT_READY=$(run_as_user "kubectl get pods -n "$namespace" --no-headers | awk '$2 !~ /^([0-9]+)\/\1$/'")
+      
+      if [ -z "$NOT_READY" ]; then
+        STABLE_COUNT=$((STABLE_COUNT + 1))
+        echo "✅ All pods ready. Stable count: $STABLE_COUNT"
+      else
+        STABLE_COUNT=0
+        echo "❌ Some pods not ready. Waiting..."
+      fi
+      sleep 60
+    done
+    echo "🎉 All pods are stable and running."
+}
 #------------------------------------------------------------------------------
 # Function : createIngressSecret   
 # Description: Creates a self-signed TLS certificate and stores it as a Kubernetes secret.

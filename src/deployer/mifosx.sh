@@ -18,6 +18,8 @@ function DeployMifosXfromYaml() {
         return
       fi
     fi 
+    run_as_user "kubectl wait --for=condition=ready pod --all -n $PH_NAMESPACE --timeout=600s"
+    wait_for_pods_ready "$PH_NAMESPACE"
     # We are deploying or redeploying => make sure things are cleaned up first
     printf "    Redeploying MifosX : Deleting existing resources in namespace %s\n" "$MIFOSX_NAMESPACE"
     deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"

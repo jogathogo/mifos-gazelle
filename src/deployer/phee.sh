@@ -19,6 +19,8 @@ function deployPH(){
   printf "    Redeploying paymenthub : Deleting existing resources in namespace %s\n" "$PH_NAMESPACE"
   deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
   manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
+  run_as_user "kubectl wait --for=condition=ready pod --all -n $VNEXT_NAMESPACE --timeout=600s"
+  wait_for_pods_ready "$VNEXT_NAMESPACE"
   echo "==> Deploying PaymentHub EE"
   createNamespace "$PH_NAMESPACE"
   #checkPHEEDependencies
