@@ -118,10 +118,10 @@ function deployPhHelmChartFromDir(){
 }
 
 #------------------------------------------------------------------------------
-# Function : deployBPMS
+# Function : deploy_bpmns
 # Description: Deploys BPMN diagrams to Zeebe Operate.
 #------------------------------------------------------------------------------
-deployBPMS() {
+deploy_bpmns() {
   local host="https://zeebeops.$GAZELLE_DOMAIN/zeebe/upload"
   local DEBUG=false
   local successful_uploads=0

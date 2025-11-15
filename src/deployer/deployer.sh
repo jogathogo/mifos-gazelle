@@ -372,7 +372,7 @@ function deployApps() {
     deployvNext
     deployPH
     DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR"
-    deployBPMNs # deploy the BPMN processes to MifosX BPM Suite
+    deploy_bpmns # deploy the BPMN processes to MifosX BPM Suite
     generateMifosXandVNextData
   else
     # Process each application in the space-separated list
@@ -383,13 +383,9 @@ function deployApps() {
           ;;
         "vnext")
           deployInfrastructure "false"
-          # vnext_restore_demo_data $CONFIG_DIR "mongodump.gz" $INFRA_NAMESPACE
-          # exit 1 
           deployvNext
           ;;
         "mifosx")
-          # generateMifosXandVNextData 
-          # exit 1
           if [[ "$redeploy" == "true" ]]; then 
             echo "Removing current mifosx and redeploying"
             deleteApps 1 "mifosx"
