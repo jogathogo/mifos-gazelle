@@ -58,6 +58,7 @@ function prepare_payment_hub_chart() {
   # Update FQDNs in values file and manifests
   echo "    Updating FQDNs Helm chart values and manifests to use domain $GAZELLE_DOMAIN"
   update_fqdn "$PH_VALUES_FILE" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
+  update_fqdn "$PH_VALUES_FILE" "mifos.gazelle.localhost" "$GAZELLE_DOMAIN" 
   update_fqdn_batch "$APPS_DIR/ph_template" "mifos.gazelle.test" "$GAZELLE_DOMAIN"
   
   # Run for ph-ee-engine
