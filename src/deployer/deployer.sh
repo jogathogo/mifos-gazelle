@@ -175,6 +175,7 @@ function deployInfrastructure() {
   # ensure we use the right domain name  in infra chart
   echo "    Updating FQDNs in INFRA Helm chart values.yaml to use domain $GAZELLE_DOMAIN"
   update_fqdn "$INFRA_CHART_DIR/values.yaml" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
+  update_fqdn "$INFRA_CHART_DIR/values.yaml" "mifos.gazelle.localhost" "$GAZELLE_DOMAIN" 
 
   # Update helm dependencies for infra chart
   # run_as_user "cd $INFRA_CHART_DIR && helm dep update" # >> /dev/null 2>&1
@@ -292,7 +293,7 @@ kubectl get pods -n vnext         # For testing mojaloop vNext
 kubectl get pods -n paymenthub    # For testing PaymentHub EE
 kubectl get pods -n mifosx        # For testing MifosX
 
-or install k9s by executing ./src/utils/install-k9s.sh in this terminal window
+or using k9s with $HOME/local/bin/k9s <cr> 
 EOF
 }
 
@@ -302,21 +303,10 @@ EOF
 # Example: deleteApps _ "mifosx vnext"
 #------------------------------------------------------------
 function deleteApps() {
-  local appsToDelete="$2"
-
-  # if [[ "$appsToDelete" == "all" ]]; then
-  #   echo "Deleting all applications and related resources."
-  #   deleteResourcesInNamespaceMatchingPattern "$MIFOSX_NAMESPACE"
-  #   deleteResourcesInNamespaceMatchingPattern "$VNEXT_NAMESPACE"
-  #   deleteResourcesInNamespaceMatchingPattern "$PH_NAMESPACE"
-  #   deleteResourcesInNamespaceMatchingPattern "$INFRA_NAMESPACE"
-  #   deleteResourcesInNamespaceMatchingPattern "default"
-  #   return 0
-  # fi
-  
-  #printf "      %s\n" "$appsToDelete"
+  local appsToDelete="$1"
   
   for app in $appsToDelete; do
+    echo -e "${BLUE}Deleting application: $app...${RESET}"
     case "$app" in
       "vnext")
         printf "    deleting vnext "
@@ -352,59 +342,46 @@ function deleteApps() {
 
 #------------------------------------------------------------
 # Description : Orchestrates deployment of apps (infra, vnext, etc.).
-# Usage : deployApps <ignored> <"app1 app2"|all> [redeploy]
+# Usage : deployApps <"app1 app2"... > [redeploy]
 # Example: deployApps _ "vnext mifosx" true
 #------------------------------------------------------------
 function deployApps() {
-  local appsToDeploy="$2"
-  local redeploy="${3:-false}"
-  
-  #echo "Redeploy mode: $redeploy"
-  #echo -e "${BLUE}Starting deployment for applications: $appsToDeploy...${RESET}"
+  local appsToDeploy="$1"
+  local redeploy="${2:-false}"
 
-  # Special handling for 'all' as a block-deploy
-  if [[ "$appsToDeploy" == "all" ]]; then
-    echo -e "${BLUE}Deploying all apps...${RESET}"
-    deployInfrastructure "$redeploy"
-    deployvNext
-    deployPH
-    DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR"
-    deployBPMNs # deploy the BPMN processes to MifosX BPM Suite
-    generateMifosXandVNextData
-  else
-    # Process each application in the space-separated list
-    for app in $appsToDeploy; do      
-      case "$app" in
-        "infra")
-          deployInfrastructure "$redeploy"
-          ;;
-        "vnext")
-          deployInfrastructure "false"
-          deployvNext
-          ;;
-        "mifosx")
-          if [[ "$redeploy" == "true" ]]; then 
-            echo "Removing current mifosx and redeploying"
-            deleteApps 1 "mifosx"
-            
-          fi 
-          deployInfrastructure "false"
-          DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR" 
-          generateMifosXandVNextData
-          ;;
-        "phee")
-          deployInfrastructure "false"
-          deployPH
-          ;;
-        *)
-          echo -e "${RED}Error: Unknown application '$app' in deployment list. This should have been caught by validation.${RESET}"
-          showUsage
-          exit 1
-          ;;
-      esac
-    done
-
-  fi
+  echo "Starting deployment for applications: $appsToDeploy..."
+  # Process each application in the space-separated list
+  for app in $appsToDeploy; do     
+    echo -e "${BLUE}Deploying application: $app...${RESET}"  
+    case "$app" in
+      "infra")
+        deployInfrastructure "$redeploy"
+        ;;
+      "vnext")
+        deployInfrastructure "false"  # deploy infra if not already there even if redeploy=true
+        deployvNext
+        ;;
+      "mifosx")
+        # if [[ "$redeploy" == "true" ]]; then 
+        #   #echo "Removing current mifosx and redeploying"
+        #   deleteApps "mifosx"
+          
+        # fi 
+        deployInfrastructure "false"  # deploy infra if not already there even if redeploy=true
+        DeployMifosXfromYaml "$MIFOSX_MANIFESTS_DIR" 
+        generateMifosXandVNextData
+        ;;
+      "phee")
+        deployInfrastructure "false"
+        deployPH
+        ;;
+      *)
+        echo -e "${RED}Error: Unknown application '$app' in deployment list. This should have been caught by validation.${RESET}"
+        showUsage
+        exit 1
+        ;;
+    esac
+  done
 
   print_deployment_end_message
 }

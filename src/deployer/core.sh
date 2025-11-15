@@ -51,7 +51,7 @@ function is_app_running() {
     }
     
     # Check if there are enough pods and all are Ready
-    if [[ $total_pods -ge $min_pods && $total_pods -eq $ready_count ]]; then
+    if [[ $total_pods -ge $min_pods && $ready_count -ge $min_pods ]]; then
         logWithVerboseCheck "$debug" debug "Found $total_pods pods, all Ready, in namespace $namespace, meeting minimum of $min_pods"
         return 0
     else

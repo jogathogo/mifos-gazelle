@@ -6,7 +6,6 @@
 # Description: Deploys PaymentHub EE using Helm charts.
 #------------------------------------------------------------------------------
 function deployPH(){
-  # TODO make this a global variable
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
   pheeEngineChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
 
@@ -41,7 +40,7 @@ function deployPH(){
   if are_bpmns_loaded $bpmns_to_deploy ; then
     echo "    BPMN diagrams are already loaded - skipping load "
   else
-    deployBPMS
+    deploy_bpmns
   fi
   echo -e "\n${GREEN}============================"
   echo -e "Paymenthub Deployed"
@@ -61,7 +60,9 @@ function prepare_payment_hub_chart() {
   # Update FQDNs in values file and manifests
   echo "    Updating FQDNs Helm chart values and manifests to use domain $GAZELLE_DOMAIN"
   update_fqdn "$PH_VALUES_FILE" "mifos.gazelle.test" "$GAZELLE_DOMAIN" 
+  update_fqdn "$PH_VALUES_FILE" "mifos.gazelle.localhost" "$GAZELLE_DOMAIN" 
   update_fqdn_batch "$APPS_DIR/ph_template" "mifos.gazelle.test" "$GAZELLE_DOMAIN"
+  update_fqdn_batch "$APPS_DIR/ph_template" "mifos.gazelle.localhost" "$GAZELLE_DOMAIN"
   
   # Run for ph-ee-engine
   phEEenginePath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
@@ -120,10 +121,10 @@ function deployPhHelmChartFromDir(){
 }
 
 #------------------------------------------------------------------------------
-# Function : deployBPMS
+# Function : deploy_bpmns
 # Description: Deploys BPMN diagrams to Zeebe Operate.
 #------------------------------------------------------------------------------
-deployBPMS() {
+deploy_bpmns() {
   local host="https://zeebeops.$GAZELLE_DOMAIN/zeebe/upload"
   local DEBUG=false
   local successful_uploads=0

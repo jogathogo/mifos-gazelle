@@ -144,14 +144,14 @@ function vnext_restore_demo_data {
         return 1
     fi
 
-    if ! run_as_user "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" > /dev/null 2>&1 ;  then
+    if ! su - "$k8s_user" -c "kubectl cp \"$mongo_data_dir/$mongo_dump_file\" \"$namespace/$mongopod:/tmp/mongodump.gz\"" > /dev/null 2>&1 ;  then
         echo -e "\n ** Error: Failed to copy $mongo_dump_file to pod $mongopod"
         rm -rf "${temp_dir:-}"
         return 1
     fi
 
     # Execute mongorestore using run_as_user
-    if ! run_as_user "kubectl exec --namespace \"$namespace\" --stdin --tty \"$mongopod\" -- mongorestore -u root -p \"$mongo_root_pw\" --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin" >/dev/null 2>&1; then
+    if ! run_as_user "kubectl exec --namespace \"$namespace\" --stdin --tty \"$mongopod\" -- mongorestore -u root -p \"$mongo_root_pw\" --gzip --archive=/tmp/mongodump.gz --authenticationDatabase admin" > /dev/null 2>&1 ; then
         echo -e "\n ** Error: mongorestore command failed"
         rm -rf "${temp_dir:-}"
         return 1
