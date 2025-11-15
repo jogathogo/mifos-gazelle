@@ -175,32 +175,6 @@ redpanda-console:
             pathType: ImplementationSpecific
 
 ############### MongoDB  ####################
-#         older amd64 specific 
-# https://github.com/bitnami/charts/tree/main/bitnami/mongodb
-# mongodb:
-#   enabled: true
-#   image:
-#     tag: 5.0.18-debian-11-r8
-
-#   fullnameOverride: "mongodb"
-#   auth:
-#     enabled: true
-
-#     rootUser: root
-#     rootPassword: mongoDbPas42
-#     usernames:
-#     - 'mojaloop'
-#     passwords:
-#     - 'password'
-#     databases:
-#     - 'mlos'
-
-#     replicaSetKey: ""
-#     existingSecret: ""
-#   persistence:
-#     enabled: false
-################### end of  older gazelle v1.1.0 amd64 only ##############
-
 mongodb:
   enabled: true
   persistence:
@@ -212,6 +186,13 @@ mongodb:
   settings:
     rootUsername: root
     rootPassword: mongoDbPas42
+    
+  extraEnv:
+    - name: MONGO_INITDB_ROOT_USERNAME
+      value: "root"
+    - name: MONGO_INITDB_ROOT_PASSWORD
+      value: "mongoDbPas42"
+
 ############### Mongo Express ####################
 # mongo express config
 mongo-express:
@@ -267,8 +248,6 @@ elasticsearch:
     repository: bitnamilegacy/os-shell
     tag: 11-debian-11-r90
 
-  #fullnameOverride: "fredelastic"
-
   security:
     elasticPassword: elasticSearchPas42
     tls:
@@ -319,15 +298,15 @@ elasticsearch:
       enabled: false
     env:
       - name: NODE_OPTIONS
-        value: "--max-old-space-size=128" # Set Kibana's JS heap to 128MB 
+        value: "--max-old-space-size=256" # Set Kibana's JS heap to 256MB 
 
     resources:
       requests:
-        memory: "300Mi"  # Request enough memory for the heap + overhead
-        cpu: "200m"
+        memory: "400Mi"  # Request enough memory for the heap + overhead
+        cpu: "400m"
       limits:
         memory: "800Mi" # Allow some buffer over the heap for OS page cache and other overhead
-        cpu: "200m" # 
+        cpu: "400m" # 
     ingress:
       enabled: true
       ingressClassName: nginx
