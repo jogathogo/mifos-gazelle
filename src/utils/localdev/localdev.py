@@ -433,7 +433,7 @@ class LocalDevPatcher:
         
         # Backup original if not in dry-run mode
         if not dry_run:
-            backup_file = deployment_file.with_suffix('.yaml.backup')
+            backup_file = deployment_file.parent / f"_deployment.yaml.backup"
             if not backup_file.exists():
                 with open(backup_file, 'w') as f:
                     f.write(content)
@@ -457,86 +457,151 @@ class LocalDevPatcher:
     def _apply_patches(self, content: str, image: str, jarpath: str, hostpath: str, component: str) -> str:
         """Apply the necessary patches to the deployment YAML content"""
         
-        # 1. Comment out the original image line and add new image
-        content = re.sub(
-            r'(\s+)(#?\s*image:\s*"\{\{.*?\.Values\.image.*?\}\}")',
-            lambda m: f'{m.group(1)}#{m.group(2).lstrip("#").strip()}  # commented out to allow hostpath local dev/test\n{m.group(1)}image: "{image}"  # this is the JDK to use',
-            content
-        )
+        lines = content.split('\n')
+        result_lines = []
+        i = 0
         
-        # If the pattern above didn't match, try alternate pattern
-        if f'image: "{image}"' not in content:
-            content = re.sub(
-                r'(\s+)(image:\s*"\{\{.*?\.Values\.image.*?\}\}")',
-                lambda m: f'{m.group(1)}image: "{image}"  # this is the JDK to use\n{m.group(1)}#{m.group(2)}  # commented out to allow hostpath local dev/test',
-                content
-            )
+        in_init_containers = False
+        in_main_containers = False
+        in_main_container_def = False
+        image_patched = False
+        volumemounts_patched = False
+        command_patched = False
+        volumes_patched = False
         
-        # 2. Add volumeMounts if not present
-        if 'name: local-code' not in content:
-            # Find the volumeMounts section and add local-code mount
-            volume_mount_pattern = r'(\s+volumeMounts:\n(?:\s+- name:.*\n\s+mountPath:.*\n)*)'
+        # Debug mode
+        debug = os.environ.get('DEBUG_PATCH', 'false').lower() == 'true'
+        
+        while i < len(lines):
+            line = lines[i]
             
-            local_code_mount = f'''            - name: local-code
-              mountPath: /app # Mount your local code into /app in the container
-'''
+            if debug and ('containers:' in line or 'initContainers:' in line or 'volumes:' in line or 
+                         ('- name:' in line and (in_main_containers or in_init_containers)) or
+                         ('image:' in line and 'Values' in line) or
+                         'volumeMounts:' in line):
+                print(f"  [DEBUG] Line {i}: {line.strip()[:60]}")
+                print(f"    in_init={in_init_containers}, in_main={in_main_containers}, in_def={in_main_container_def}")
             
-            if 'volumeMounts:' in content:
-                content = re.sub(
-                    volume_mount_pattern,
-                    lambda m: m.group(0) + local_code_mount,
-                    content
-                )
-            else:
-                # Add volumeMounts section before command
-                content = re.sub(
-                    r'(\s+)(command:)',
-                    lambda m: f'{m.group(1)}volumeMounts:\n{local_code_mount}{m.group(1)}{m.group(2)}',
-                    content
-                )
+            # Detect section transitions FIRST before any processing
+            if 'initContainers:' in line and line.strip().startswith('initContainers:'):
+                in_init_containers = True
+                in_main_containers = False
+                in_main_container_def = False
+                if debug:
+                    print(f"    -> Entering initContainers")
+                result_lines.append(line)
+                i += 1
+                continue
+            
+            # When we see 'containers:' we're leaving initContainers and entering main containers
+            if line.strip().startswith('containers:'):
+                in_init_containers = False
+                in_main_containers = True
+                in_main_container_def = False
+                if debug:
+                    print(f"    -> Entering main containers")
+                result_lines.append(line)
+                i += 1
+                continue
+            
+            if in_main_containers and line.strip().startswith('- name:') and not in_main_container_def:
+                in_main_container_def = True
+                if debug:
+                    print(f"    -> Found main container definition")
+                result_lines.append(line)
+                i += 1
+                continue
+            
+            if line.strip().startswith('volumes:') and in_main_containers:
+                # Process volumes section
+                if debug:
+                    print(f"    -> Entering volumes section")
+                in_main_containers = False
+                in_main_container_def = False
+                
+                if not volumes_patched:
+                    result_lines.append(line)
+                    i += 1
+                    indent = len(line) - len(line.lstrip())
+                    
+                    # Copy existing volumes
+                    while i < len(lines) and lines[i].strip().startswith('- name:'):
+                        result_lines.append(lines[i])
+                        i += 1
+                        # Copy volume definition lines
+                        while i < len(lines) and not lines[i].strip().startswith('- name:') and not lines[i].strip().startswith('{{-') and lines[i].strip():
+                            result_lines.append(lines[i])
+                            i += 1
+                    
+                    # Add our volume
+                    result_lines.append(' ' * (indent + 2) + '- name: local-code')
+                    result_lines.append(' ' * (indent + 4) + 'hostPath:  # add this for local dev test')
+                    result_lines.append(' ' * (indent + 6) + f'path: {hostpath} # local project path')
+                    result_lines.append(' ' * (indent + 6) + "type: Directory # Ensure it's a directory")
+                    volumes_patched = True
+                    if debug:
+                        print(f"    -> Added hostPath volume")
+                    continue
+                else:
+                    result_lines.append(line)
+                    i += 1
+                    continue
+            
+            # Skip further processing if we're in initContainers
+            if in_init_containers:
+                result_lines.append(line)
+                i += 1
+                continue
+            
+            # Process main container image line
+            if in_main_container_def and not image_patched and 'image:' in line and '{{' in line and 'Values.image' in line:
+                indent = len(line) - len(line.lstrip())
+                result_lines.append(' ' * indent + f'image: "{image}"  # this is the JDK to use')
+                result_lines.append(' ' * indent + f'#{line.strip()}  # commented out to allow hostpath local dev/test')
+                image_patched = True
+                if debug:
+                    print(f"    -> Patched image")
+                i += 1
+                continue
+            
+            # Process volumeMounts
+            if in_main_container_def and 'volumeMounts:' in line and not volumemounts_patched:
+                result_lines.append(line)
+                i += 1
+                indent = len(line) - len(line.lstrip())
+                
+                # Copy existing volumeMounts
+                while i < len(lines) and (lines[i].strip().startswith('- name:') or lines[i].strip().startswith('mountPath:')):
+                    result_lines.append(lines[i])
+                    i += 1
+                
+                # Add our volumeMount
+                result_lines.append(' ' * (indent + 2) + '- name: local-code')
+                result_lines.append(' ' * (indent + 4) + 'mountPath: /app # Mount your local code into /app in the container')
+                
+                # Add command right after volumeMounts
+                result_lines.append(' ' * indent + f'command: ["java", "-jar", "{jarpath}"] # replace with your jar file name')
+                command_patched = True
+                volumemounts_patched = True
+                if debug:
+                    print(f"    -> Added volumeMount and command")
+                continue
+            
+            # Default: just add the line
+            result_lines.append(line)
+            i += 1
         
-        # 3. Add or update command to use the JAR
-        command_line = f'          command: ["java", "-jar", "{jarpath}"] # replace with your jar file name'
+        result = '\n'.join(result_lines)
         
-        if 'command:' in content:
-            # Replace existing command
-            content = re.sub(
-                r'\s+command:.*(?:\n\s+-.*)*',
-                f'\n{command_line}',
-                content
-            )
-        else:
-            # Add command after volumeMounts
-            content = re.sub(
-                r'(volumeMounts:(?:\n\s+- name:.*\n\s+mountPath:.*)+)\n',
-                lambda m: f'{m.group(0)}{command_line}\n',
-                content
-            )
+        # Debug output
+        if not image_patched:
+            print(f"  ⚠️  Warning: Image was not patched")
+        if not volumemounts_patched:
+            print(f"  ⚠️  Warning: volumeMounts was not patched")
+        if not volumes_patched:
+            print(f"  ⚠️  Warning: volumes was not patched")
         
-        # 4. Add volumes section with local-code hostPath
-        local_code_volume = f'''        - name: local-code
-          hostPath:  # add this for local dev test
-            path: {hostpath} # local project path
-            type: Directory # Ensure it's a directory'''
-        
-        if 'name: local-code' not in content or 'hostPath' not in content:
-            # Find volumes section
-            if re.search(r'\s+volumes:', content):
-                # Add to existing volumes section
-                content = re.sub(
-                    r'(\s+volumes:\n(?:\s+- name:.*\n(?:\s+\w+:.*\n)*)*)',
-                    lambda m: m.group(0) + local_code_volume + '\n',
-                    content
-                )
-            else:
-                # Add volumes section before {{- end }}
-                content = re.sub(
-                    r'(\{\{- end \}\})',
-                    lambda m: f'      volumes:\n{local_code_volume}\n{m.group(1)}',
-                    content
-                )
-        
-        return content
+        return result
     
     def restore_deployment(self, component: str) -> bool:
         """Restore a deployment from its backup"""
@@ -547,7 +612,7 @@ class LocalDevPatcher:
         comp_config = self.config[component]
         directory = Path(self._expand_vars(comp_config['directory']))
         deployment_file = directory / "templates" / "deployment.yaml"
-        backup_file = deployment_file.with_suffix('.yaml.backup')
+        backup_file = deployment_file.parent / f"_deployment.yaml.backup"
         
         if not backup_file.exists():
             print(f"❌ No backup found for {component}")
