@@ -9,6 +9,11 @@ function deployPH(){
   gazelleChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/gazelle"
   pheeEngineChartPath="$APPS_DIR/$PH_EE_ENV_TEMPLATE_REPO_DIR/helm/ph-ee-engine"
 
+  # createIngressSecret "$PH_NAMESPACE"  \
+  # "bulk-processor.$GAZELLE_DOMAIN" \
+  # "sandbox-secret" \
+  # "ops.$GAZELLE_DOMAIN,api.$GAZELLE_DOMAIN,*.$GAZELLE_DOMAIN,localhost"
+
   if is_app_running "$PH_NAMESPACE"; then
     if [[ "$redeploy" == "false" ]]; then
       echo "    $PH_RELEASE_NAME is already deployed. Skipping deployment."
@@ -28,7 +33,12 @@ function deployPH(){
   manageElasticSecrets delete "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
   manageElasticSecrets create "$PH_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
   manageElasticSecrets create "$INFRA_NAMESPACE" "$APPS_DIR/$PHREPO_DIR/helm/es-secret"
-  createIngressSecret "$PH_NAMESPACE" "$GAZELLE_DOMAIN" sandbox-secret
+  # old createIngressSecret "$PH_NAMESPACE" "$GAZELLE_DOMAIN" sandbox-secret
+  createIngressSecret "$PH_NAMESPACE"  \
+  "bulk-processor.$GAZELLE_DOMAIN" \
+  "sandbox-secret" \
+  "ops.$GAZELLE_DOMAIN,ops-bk.$GAZELLE_DOMAIN,api.$GAZELLE_DOMAIN,*.$GAZELLE_DOMAIN,localhost"
+
   
   # now deploy the helm chart 
   deployPhHelmChartFromDir "$PH_NAMESPACE" "$gazelleChartPath" "$PH_VALUES_FILE"

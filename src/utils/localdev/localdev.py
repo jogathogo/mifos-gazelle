@@ -416,10 +416,19 @@ class LocalDevPatcher:
         hostpath = self._expand_vars(comp_config['hostpath'])
         
         deployment_file = directory / "templates" / "deployment.yaml"
+        backup_file = deployment_file.parent / f"_deployment.yaml.backup"
         
         if not deployment_file.exists():
             print(f"❌ Deployment file not found: {deployment_file}")
             return False
+        
+        # Check if backup already exists - if so, skip patching
+        if backup_file.exists():
+            print(f"\n⏭️  Skipping {component}...")
+            print(f"  ℹ️  Backup already exists: {backup_file.name}")
+            print(f"  ℹ️  Component appears to be already patched")
+            print(f"  💡 Use --restore first if you want to re-patch")
+            return True
         
         print(f"\n{'[DRY RUN] ' if dry_run else ''}Processing {component}...")
         print(f"  📁 File: {deployment_file}")
@@ -433,11 +442,13 @@ class LocalDevPatcher:
         
         # Backup original if not in dry-run mode
         if not dry_run:
-            backup_file = deployment_file.parent / f"_deployment.yaml.backup"
             if not backup_file.exists():
                 with open(backup_file, 'w') as f:
                     f.write(content)
                 print(f"  💾 Backup created: {backup_file.name}")
+            else:
+                # This shouldn't happen due to earlier check, but just in case
+                print(f"  ℹ️  Using existing backup: {backup_file.name}")
         
         # Apply patches
         modified_content = self._apply_patches(content, image, jarpath, hostpath, component)
