@@ -493,7 +493,7 @@ class LocalDevPatcher:
                 print(f"  [DEBUG] Line {i}: {line.strip()[:60]}")
                 print(f"    in_init={in_init_containers}, in_main={in_main_containers}, in_def={in_main_container_def}")
             
-            # Detect section transitions FIRST before any processing
+            # Detect initContainers section
             if 'initContainers:' in line and line.strip().startswith('initContainers:'):
                 in_init_containers = True
                 in_main_containers = False
@@ -524,9 +524,9 @@ class LocalDevPatcher:
                 continue
             
             if line.strip().startswith('volumes:') and in_main_containers:
-                # Process volumes section
+                # Process volumes section when transitioning from containers
                 if debug:
-                    print(f"    -> Entering volumes section")
+                    print(f"    -> Entering volumes section (from containers)")
                 in_main_containers = False
                 in_main_container_def = False
                 
@@ -557,6 +557,40 @@ class LocalDevPatcher:
                     result_lines.append(line)
                     i += 1
                     continue
+            
+            # Also handle volumes: at spec level (after initContainers or containers)
+            if line.strip().startswith('volumes:') and not volumes_patched:
+                # volumes can appear after either containers or initContainers
+                if debug:
+                    print(f"    -> Entering volumes section (at spec level, after init or containers)")
+                
+                # Clear all section flags - we're at spec level now
+                in_main_containers = False
+                in_main_container_def = False
+                in_init_containers = False
+                
+                result_lines.append(line)
+                i += 1
+                indent = len(line) - len(line.lstrip())
+                
+                # Copy existing volumes
+                while i < len(lines) and lines[i].strip().startswith('- name:'):
+                    result_lines.append(lines[i])
+                    i += 1
+                    # Copy volume definition lines
+                    while i < len(lines) and not lines[i].strip().startswith('- name:') and not lines[i].strip().startswith('{{-') and lines[i].strip():
+                        result_lines.append(lines[i])
+                        i += 1
+                
+                # Add our volume
+                result_lines.append(' ' * (indent + 2) + '- name: local-code')
+                result_lines.append(' ' * (indent + 4) + 'hostPath:  # add this for local dev test')
+                result_lines.append(' ' * (indent + 6) + f'path: {hostpath} # local project path')
+                result_lines.append(' ' * (indent + 6) + "type: Directory # Ensure it's a directory")
+                volumes_patched = True
+                if debug:
+                    print(f"    -> Added hostPath volume (spec level)")
+                continue
             
             # Skip further processing if we're in initContainers
             if in_init_containers:
@@ -638,7 +672,11 @@ class LocalDevPatcher:
         # Remove git protection when restoring
         self._git_skip_worktree(deployment_file, enable=False)
         
+        # Delete the backup file so component can be patched again
+        backup_file.unlink()
+        
         print(f"✅ Restored {component} from backup")
+        print(f"  🗑️  Removed backup file")
         return True
     
     def patch_all(self, dry_run: bool = False):
