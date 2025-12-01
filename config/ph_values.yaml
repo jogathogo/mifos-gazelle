@@ -322,9 +322,52 @@ ph-ee-engine:
           value: |
             -Xms128m
             -Xmx256m
+            -Djavax.net.ssl.trustStore=/shared/cacerts
+            -Djavax.net.ssl.trustStorePassword=changeit
         - name: BULK_PROCESSOR_CALLBACK_URL
           value: "https://ph-ee-bulk-processor:8443/authorization/callback"
-            
+
+      initContainers:
+        - name: wait-for-gateway
+          image: busybox:1.28
+          command:
+            - sh
+            - -c
+            - until nslookup phee-zeebe-gateway && nc -z phee-zeebe-gateway 26500; do echo "Waiting for phee-zeebe-gateway (port 26500)..."; sleep 2; done; echo "Gateway is up!"
+        - name: import-ssl-cert
+          image: eclipse-temurin:17-jre
+          command:
+            - sh
+            - -c
+            - |
+              echo "Copying default Java cacerts..."
+              cp /opt/java/openjdk/lib/security/cacerts /shared/cacerts
+              echo "Importing sandbox certificate..."
+              keytool -import -trustcacerts -alias sandbox-cert \
+                -file /certs/tls.crt \
+                -keystore /shared/cacerts \
+                -storepass changeit -noprompt
+              echo "Certificate imported successfully"
+              keytool -list -keystore /shared/cacerts -storepass changeit | grep sandbox
+          volumeMounts:
+            - name: sandbox-cert
+              mountPath: /certs
+              readOnly: true
+            - name: shared-cacerts
+              mountPath: /shared
+
+      extraVolumeMounts:
+        - name: shared-cacerts
+          mountPath: /shared
+          readOnly: true
+
+      extraVolumes:
+        - name: sandbox-cert
+          secret:
+            secretName: sandbox-secret
+        - name: shared-cacerts
+          emptyDir: {}
+
     ingress:
       enabled: true
       className: nginx

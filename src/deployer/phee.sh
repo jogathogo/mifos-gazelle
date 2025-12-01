@@ -37,7 +37,7 @@ function deployPH(){
   createIngressSecret "$PH_NAMESPACE"  \
   "bulk-processor.$GAZELLE_DOMAIN" \
   "sandbox-secret" \
-  "ops.$GAZELLE_DOMAIN,ops-bk.$GAZELLE_DOMAIN,api.$GAZELLE_DOMAIN,*.$GAZELLE_DOMAIN,localhost"
+  "ops.$GAZELLE_DOMAIN,ops-bk.$GAZELLE_DOMAIN,api.$GAZELLE_DOMAIN,*.$GAZELLE_DOMAIN,localhost,ph-ee-connector-channel,ph-ee-connector-channel.$PH_NAMESPACE.svc.cluster.local"
 
   
   # now deploy the helm chart 
