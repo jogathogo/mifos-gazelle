@@ -52,6 +52,7 @@ LAST_NAMES = [
 ]
 
 tenant_client_counter = {}
+created_clients = []  # Track all created clients for CSV generation
 
 # ----------------------------------------------------------------------
 # Global URLs (filled in later)
@@ -62,6 +63,7 @@ SAVINGS_API_URL = None
 SAVINGS_PRODUCTS_API_URL = None
 INTEROP_PARTIES_API_URL = None
 VNEXT_BASE_URL = None
+IDENTITY_MAPPER_URL = None
 
 AUTH_HEADER_VALUE = "Basic bWlmb3M6cGFzc3dvcmQ="   # mifos:password
 HEADERS = {
@@ -88,7 +90,6 @@ def make_api_request(
     max_retries=5, backoff_factor=2, timeout=30
 ):
     """Retry on transient errors (5xx, connection, timeout)."""
-    print(f"DEBUG make_api_request {method} {url}", file=sys.stderr)
     for attempt in range(max_retries):
         response = None
         try:
@@ -186,6 +187,74 @@ def create_savings_product(headers):
     return None
 
 # ----------------------------------------------------------------------
+# Query existing clients (for --regenerate mode)
+# ----------------------------------------------------------------------
+def get_clients_from_mifos(headers, tenant):
+    """Query Mifos to get all clients for a tenant."""
+    url = f"{CLIENTS_API_URL}"
+
+    data = make_api_request("GET", url, headers)
+
+    clients = []
+    if data and 'pageItems' in data:
+        for client in data['pageItems']:
+            clients.append({
+                'client_id': client.get('id'),
+                'name': client.get('displayName'),
+                'mobile': client.get('mobileNo'),
+                'tenant': tenant
+            })
+
+    return clients
+
+def get_savings_accounts_for_client(headers, client_id):
+    """Get savings accounts for a specific client."""
+    url = f"{API_BASE_URL}/clients/{client_id}/accounts"
+
+    data = make_api_request("GET", url, headers)
+
+    if data:
+        # Get savings accounts
+        savings = data.get('savingsAccounts', [])
+        if savings:
+            # Return the first active savings account
+            for acct in savings:
+                if acct.get('status', {}).get('active'):
+                    return acct.get('id')
+            # If no active, return first one
+            return savings[0].get('id')
+
+    return None
+
+def fetch_all_clients_from_mifos(tenants):
+    """Fetch all clients with their savings accounts from Mifos."""
+    all_clients = []
+
+    for tenant in tenants:
+        print(f"Querying {tenant} for existing clients...", file=sys.stderr)
+        tenant_headers = HEADERS.copy()
+        tenant_headers["Fineract-Platform-TenantId"] = tenant
+
+        clients = get_clients_from_mifos(tenant_headers, tenant)
+
+        for client in clients:
+            if not client['mobile']:
+                print(f"  Skipping {client['name']} - no mobile number", file=sys.stderr)
+                continue
+
+            # Get savings account
+            account_id = get_savings_accounts_for_client(tenant_headers, client['client_id'])
+            if not account_id:
+                print(f"  Skipping {client['name']} - no savings account", file=sys.stderr)
+                continue
+
+            client['account_id'] = account_id
+            all_clients.append(client)
+            print(f"  Found: {client['name']} (MSISDN: {client['mobile']}, Account: {account_id})", file=sys.stderr)
+
+    return all_clients
+
+# ----------------------------------------------------------------------
 # Client creation
 # ----------------------------------------------------------------------
 def create_client(headers, locale, tenant_id):
@@ -203,11 +272,12 @@ def create_client(headers, locale, tenant_id):
 
     firstname = rng.choice(FIRST_NAMES)
     lastname = rng.choice(LAST_NAMES)
+    full_name = f"{firstname} {lastname}"
 
     submitted_date = datetime.datetime.now().strftime(DATE_FORMAT)
     mobile_number = unique_mobile_numbers.pop(0)
 
-    print(f"Creating client {firstname} {lastname} ({mobile_number}) for {tenant_id}", file=sys.stderr)
+    print(f"Creating client {full_name} ({mobile_number}) for {tenant_id}", file=sys.stderr)
 
     payload = {
         "officeId": 1,
@@ -226,9 +296,9 @@ def create_client(headers, locale, tenant_id):
         cid = resp.get("clientId")
         if cid:
             print(f"Client ID {cid}", file=sys.stderr)
-            return cid, mobile_number
+            return cid, mobile_number, full_name
     print("Client creation failed", file=sys.stderr)
-    return None, None
+    return None, None, None
 
 # ----------------------------------------------------------------------
 # Savings account helpers
@@ -303,6 +373,65 @@ def register_client_with_vnext(headers, tenant_id, mobile_number, currency="USD"
         return True
     return False
 
+def register_beneficiary_with_identity_mapper(tenant_id, mobile_number, account_id):
+    """Register beneficiary with identity-account-mapper."""
+    if not mobile_number or not account_id:
+        return False
+
+    url = f"{IDENTITY_MAPPER_URL}/beneficiary"
+    # Request ID must be exactly 12 characters (matching register-and-generate-csv.py)
+    request_id = str(uuid.uuid4()).replace('-', '')[:12]
+
+    beneficiary = {
+        "payeeIdentity": mobile_number,
+        "paymentModality": "00",  # MSISDN payment modality
+        "financialAddress": str(account_id),
+        "bankingInstitutionCode": tenant_id
+    }
+
+    payload = {
+        "requestID": request_id,  # Note: capital ID required
+        "sourceBBID": tenant_id,
+        "beneficiaries": [beneficiary]
+    }
+
+    mapper_headers = {
+        "X-CallbackURL": "https://localhost/callback",  # Dummy callback URL
+        "X-Registering-Institution-ID": tenant_id,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    try:
+        # Use raw requests here to handle 500 responses with structured data
+        response = requests.post(url, json=payload, headers=mapper_headers, verify=False, timeout=30)
+
+        # Check if we got a structured response (even if HTTP status is 500)
+        # responseCode "01" means the identity mapper processed it
+        # (callback failure is expected with fake callback URL)
+        try:
+            resp_json = response.json()
+            if 'responseCode' in resp_json:
+                print(f"✓ Registered {mobile_number} → account {account_id} @ {tenant_id}", file=sys.stderr)
+                print(f"   Response: {resp_json.get('responseDescription', 'OK')}", file=sys.stderr)
+                return True
+        except:
+            pass
+
+        # If 2xx status, consider it success
+        if 200 <= response.status_code < 300:
+            print(f"✓ Registered {mobile_number} → account {account_id} @ {tenant_id}", file=sys.stderr)
+            return True
+
+        # Otherwise report error
+        print(f"✗ Failed to register {mobile_number}: HTTP {response.status_code}", file=sys.stderr)
+        print(f"   Response: {response.text}", file=sys.stderr)
+        return False
+
+    except Exception as e:
+        print(f"✗ Failed to register {mobile_number}: {e}", file=sys.stderr)
+        return False
+
 # ----------------------------------------------------------------------
 # Config / URL setup
 # ----------------------------------------------------------------------
@@ -322,13 +451,104 @@ def get_gazelle_domain(cfg):
 
 def set_global_urls(domain):
     global API_BASE_URL, CLIENTS_API_URL, SAVINGS_API_URL, SAVINGS_PRODUCTS_API_URL
-    global INTEROP_PARTIES_API_URL, VNEXT_BASE_URL
+    global INTEROP_PARTIES_API_URL, VNEXT_BASE_URL, IDENTITY_MAPPER_URL
     API_BASE_URL = f"https://mifos.{domain}/fineract-provider/api/v1"
     CLIENTS_API_URL = f"{API_BASE_URL}/clients"
     SAVINGS_API_URL = f"{API_BASE_URL}/savingsaccounts"
     SAVINGS_PRODUCTS_API_URL = f"{API_BASE_URL}/savingsproducts"
     INTEROP_PARTIES_API_URL = f"{API_BASE_URL}/interoperation/parties/MSISDN"
     VNEXT_BASE_URL = f"http://vnextadmin.{domain}/_interop/participants/MSISDN/"
+    IDENTITY_MAPPER_URL = f"https://identity-mapper.{domain}"
+
+# ----------------------------------------------------------------------
+# CSV Generation
+# ----------------------------------------------------------------------
+def generate_bulk_csv_files():
+    """Generate test CSV files for mojaloop and closedloop modes."""
+    print("\n=== Generating bulk CSV files ===", file=sys.stderr)
+
+    # Find payer (greenbank) and payees (bluebank)
+    payer = None
+    payees = []
+
+    for client in created_clients:
+        if client['tenant'] == 'greenbank':
+            payer = client
+        elif client['tenant'] == 'bluebank':
+            payees.append(client)
+
+    if not payer:
+        print("ERROR: No greenbank payer found", file=sys.stderr)
+        return
+
+    if len(payees) < 2:
+        print(f"ERROR: Need at least 2 bluebank payees, found {len(payees)}", file=sys.stderr)
+        return
+
+    # Generate 4 transactions: 2 to each of the first 2 payees
+    transactions = []
+    amounts = [10.00, 15.00]  # Different amounts for variety
+
+    for idx, payee in enumerate(payees[:2]):
+        for amount in amounts:
+            txn_id = len(transactions)
+            request_id = str(uuid.uuid4())
+            transactions.append({
+                'id': txn_id,
+                'request_id': request_id,
+                'payer_mobile': payer['mobile'],
+                'payer_account': payer['account_id'],
+                'payee_mobile': payee['mobile'],
+                'payee_account': payee['account_id'],
+                'payee_name': payee['name'],
+                'amount': amount
+            })
+
+    # Generate MOJALOOP CSV
+    mojaloop_file = Path(__file__).parent / "bulk-gazelle-mojaloop-4.csv"
+    print(f"Generating {mojaloop_file}", file=sys.stderr)
+
+    with open(mojaloop_file, 'w') as f:
+        # Header
+        f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note,account_number\n")
+
+        # Transactions (NO trailing newline after last row)
+        for i, txn in enumerate(transactions):
+            line = f"{txn['id']},{txn['request_id']},mojaloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']},{txn['payee_account']}"
+            if i < len(transactions) - 1:
+                f.write(line + "\n")
+            else:
+                f.write(line)  # NO newline after last row
+
+    print(f"✓ Generated {mojaloop_file}", file=sys.stderr)
+
+    # Generate CLOSEDLOOP CSV
+    closedloop_file = Path(__file__).parent / "bulk-gazelle-closedloop-4.csv"
+    print(f"Generating {closedloop_file}", file=sys.stderr)
+
+    with open(closedloop_file, 'w') as f:
+        # Header
+        f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note,account_number\n")
+
+        # Transactions (NO trailing newline after last row)
+        for i, txn in enumerate(transactions):
+            line = f"{txn['id']},{txn['request_id']},closedloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']},{txn['payee_account']}"
+            if i < len(transactions) - 1:
+                f.write(line + "\n")
+            else:
+                f.write(line)  # NO newline after last row
+
+    print(f"✓ Generated {closedloop_file}", file=sys.stderr)
+
+    # Print summary
+    print(f"\n{'='*60}", file=sys.stderr)
+    print(f"CSV files created with {len(transactions)} transactions:", file=sys.stderr)
+    print(f"  - {mojaloop_file.name}", file=sys.stderr)
+    print(f"  - {closedloop_file.name}", file=sys.stderr)
+    print(f"\nPayer: {payer['name']} ({payer['mobile']}) - greenbank account {payer['account_id']}", file=sys.stderr)
+    for idx, payee in enumerate(payees[:2]):
+        print(f"Payee {idx+1}: {payee['name']} ({payee['mobile']}) - bluebank account {payee['account_id']}", file=sys.stderr)
+    print(f"{'='*60}", file=sys.stderr)
 
 # ----------------------------------------------------------------------
 # Main
@@ -345,12 +565,47 @@ if __name__ == "__main__":
                         help=f'Path to config.ini (default: {default_config})')
     parser.add_argument('--random', action='store_true',
                         help='Generate random (non-deterministic) clients')
+    parser.add_argument('--regenerate', action='store_true',
+                        help='Query existing clients and regenerate CSVs (idempotent mode)')
     args = parser.parse_args()
 
     # ----- config & URLs -----
     cfg = load_config(args.config)
     domain = get_gazelle_domain(cfg)
     set_global_urls(domain)
+
+    # ----- regenerate mode (query existing clients) -----
+    if args.regenerate:
+        print("\n=== REGENERATE MODE: Querying existing clients ===\n", file=sys.stderr)
+
+        tenants_list = list(TENANTS.keys())
+        all_clients = fetch_all_clients_from_mifos(tenants_list)
+
+        if not all_clients:
+            print("ERROR: No existing clients found in Mifos", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"\nFound {len(all_clients)} clients total", file=sys.stderr)
+
+        # Register each client with identity-account-mapper
+        print("\nRegistering clients with identity-account-mapper...", file=sys.stderr)
+        success_count = 0
+        for client in all_clients:
+            if register_beneficiary_with_identity_mapper(client['tenant'], client['mobile'], client['account_id']):
+                success_count += 1
+            # Add to created_clients for CSV generation
+            created_clients.append(client)
+
+        print(f"\nRegistered {success_count}/{len(all_clients)} clients", file=sys.stderr)
+
+        # Generate CSV files
+        generate_bulk_csv_files()
+
+        print("\n✓ Regeneration complete!", file=sys.stderr)
+        sys.exit(0)
+
+    # ----- create mode (default) -----
+    print("\n=== CREATE MODE: Generating new clients ===\n", file=sys.stderr)
 
     # ----- deterministic / random mode -----
     #global _deterministic_mode
@@ -388,7 +643,7 @@ if __name__ == "__main__":
             print(f"\n--- Client {i}/{num_clients} for {tenant_id} ---", file=sys.stderr)
 
             # client
-            client_id, mobile = create_client(HEADERS, LOCALE, tenant_id)
+            client_id, mobile, name = create_client(HEADERS, LOCALE, tenant_id)
             if not client_id:
                 continue
 
@@ -414,8 +669,23 @@ if __name__ == "__main__":
             register_interop_party(HEADERS, client_id, ext_id, mobile)
             register_client_with_vnext(HEADERS, tenant_id, mobile)
 
+            # identity-account-mapper
+            register_beneficiary_with_identity_mapper(tenant_id, mobile, acct_id)
+
+            # track client for CSV generation
+            created_clients.append({
+                'tenant': tenant_id,
+                'mobile': mobile,
+                'account_id': acct_id,
+                'client_id': client_id,
+                'name': name
+            })
+
             print(f"--- Finished client {i} ---", file=sys.stderr)
 
         print(f"=== Finished tenant {tenant_id} ===\n", file=sys.stderr)
 
     print("All tenants processed.", file=sys.stderr)
+
+    # Generate bulk CSV files
+    generate_bulk_csv_files()
