@@ -79,8 +79,8 @@ def get_client_accounts(domain, tenant, client_id):
 
 def get_account_transactions(domain, tenant, account_id):
     """Get transaction history for a savings account."""
-    # Get account details which includes transactions
-    url = f"https://mifos.{domain}/fineract-provider/api/v1/savingsaccounts/{account_id}"
+    # Get account details with transactions association
+    url = f"https://mifos.{domain}/fineract-provider/api/v1/savingsaccounts/{account_id}?associations=transactions"
     headers = {
         "Fineract-Platform-TenantId": tenant,
         "Authorization": AUTH_HEADER_VALUE,
