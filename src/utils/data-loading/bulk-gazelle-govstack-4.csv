@@ -1,5 +1,0 @@
-id,request_id,payment_mode,payee_identifier_type,payee_identifier,amount,currency,note,account_number
-0,cbfae2b8-fc6c-479f-a253-a42fc6980c06,closedloop,MSISDN,0495822412,10.00,USD,Payment to James Ramirez,1
-1,a5bca10c-79ec-4843-8638-e86f1c1fc066,closedloop,MSISDN,0495822412,15.00,USD,Payment to James Ramirez,1
-2,c118025d-69f4-45d3-bcd7-dd9f62492997,closedloop,MSISDN,0424942603,10.00,USD,Payment to Caleb Harris,2
-3,83b1e99c-fc89-4f07-94c6-491d082d16c9,closedloop,MSISDN,0424942603,15.00,USD,Payment to Caleb Harris,2

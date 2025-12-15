@@ -24,11 +24,10 @@ This directory contains tools to streamline local development of Java components
 # Navigate to this directory
 cd mifos-gazelle/src/utils/localdev
 
-# Install git protection (recommended)
+# Install git protection 
+# only needed if you are pushing to Mifos Repos => so you don't accidentally push dev charts to github but not required 
+# if you are not actively developin against Mifos Repos => then skip this step.
 ./install-git-protection.sh
-
-# Edit localdev.ini to configure your components
-nano localdev.ini
 ```
 
 ### 2. Configure Your Components

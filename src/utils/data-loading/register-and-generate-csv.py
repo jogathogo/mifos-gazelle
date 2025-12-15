@@ -138,26 +138,25 @@ def fetch_all_clients_from_mifos(domain, tenants):
 def register_with_identity_mapper(domain, client):
     """Register a client with identity-account-mapper."""
     # Use localhost domain for actual cluster access
-    url = f"https://identity-mapper.mifos.gazelle.localhost/beneficiary"
+    url = f"https://identity-mapper.{domain}/beneficiary"
     # Request ID must be exactly 12 characters
     request_id = str(uuid.uuid4()).replace('-', '')[:12]
 
     beneficiary = {
         "payeeIdentity": client['mobile'],
-        "paymentModality": "00",  # MSISDN payment modality
-        "financialAddress": str(client['account_id']),
+        "paymentModality": "01",  # MSISDN payment modality
+        "financialAddress": str(client['account_id']).zfill(9),  # Pad to 9 digits like 000000001
         "bankingInstitutionCode": client['tenant']
     }
 
     payload = {
         "requestID": request_id,  # Note: capital ID required
-        "sourceBBID": client['tenant'],
         "beneficiaries": [beneficiary]
     }
 
     headers = {
-        "X-CallbackURL": f"https://callback.{client['tenant']}",
-        "X-Registering-Institution-ID": client['tenant'],
+        "X-CallbackURL": "http://ph-ee-connector-mock-payment-schema:8080/beneficiary/registration/callback",
+        "X-Registering-Institution-ID": "greenbank",  # Use greenbank for all registrations
         "Content-Type": "application/json",
         "Accept": "application/json"
     }
@@ -242,11 +241,11 @@ def generate_csv_files(all_clients, payer_tenant='greenbank'):
 
     with open(mojaloop_file, 'w') as f:
         # Header
-        f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note,account_number\n")
+        f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note\n")
 
         # Transactions (NO trailing newline after last row)
         for i, txn in enumerate(transactions):
-            line = f"{txn['id']},{txn['request_id']},mojaloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']},{txn['payee_account']}"
+            line = f"{txn['id']},{txn['request_id']},mojaloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']}"
             if i < len(transactions) - 1:
                 f.write(line + "\n")
             else:
@@ -260,11 +259,11 @@ def generate_csv_files(all_clients, payer_tenant='greenbank'):
 
     with open(closedloop_file, 'w') as f:
         # Header
-        f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note,account_number\n")
+        f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note\n")
 
         # Transactions (NO trailing newline after last row)
         for i, txn in enumerate(transactions):
-            line = f"{txn['id']},{txn['request_id']},closedloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']},{txn['payee_account']}"
+            line = f"{txn['id']},{txn['request_id']},closedloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']}"
             if i < len(transactions) - 1:
                 f.write(line + "\n")
             else:
@@ -286,22 +285,54 @@ def generate_csv_files(all_clients, payer_tenant='greenbank'):
 # Main
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
+    # Setup argument parser
+    script_path = Path(__file__).absolute()
+    base_dir = script_path.parent.parent.parent.parent
+    default_config = base_dir / "config" / "config.ini"
+
+    parser = argparse.ArgumentParser(
+        description="Register Mifos clients with identity-account-mapper and generate bulk CSV files",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    parser.add_argument('--config', '-c', type=Path, default=default_config,
+                       help=f'Path to config.ini (default: {default_config})')
+    parser.add_argument('--payer-tenant', '-p', type=str, default='greenbank',
+                       help='Tenant to use as payer (default: greenbank)')
+
+    args = parser.parse_args()
+
     print("=== Identity Mapper Registration & CSV Generation ===\n", file=sys.stderr)
 
     # Load config
-    domain = load_config()
-    print(f"Using domain: {domain}\n", file=sys.stderr)
+    cfg = load_config(args.config)
+    domain = get_gazelle_domain(cfg)
+    tenants = get_tenants(cfg)
+
+    print(f"Using domain: {domain}", file=sys.stderr)
+    print(f"Tenants: {', '.join(tenants)}\n", file=sys.stderr)
+
+    # Fetch all clients from Mifos
+    print("Fetching clients from Mifos...", file=sys.stderr)
+    all_clients = fetch_all_clients_from_mifos(domain, tenants)
+
+    if not all_clients:
+        print("\nERROR: No clients found in Mifos", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\nFound {len(all_clients)} clients with mobile numbers and savings accounts\n", file=sys.stderr)
 
     # Register each client with identity-account-mapper
     print("Registering clients with identity-account-mapper...", file=sys.stderr)
     success_count = 0
-    for client in EXISTING_CLIENTS:
+    for client in all_clients:
         if register_with_identity_mapper(domain, client):
             success_count += 1
 
-    print(f"\nRegistered {success_count}/{len(EXISTING_CLIENTS)} clients", file=sys.stderr)
+    print(f"\nRegistered {success_count}/{len(all_clients)} clients\n", file=sys.stderr)
 
     # Generate CSV files
-    generate_csv_files()
+    print("Generating CSV files...", file=sys.stderr)
+    generate_csv_files(all_clients, payer_tenant=args.payer_tenant)
 
     print("\n✓ All done!", file=sys.stderr)

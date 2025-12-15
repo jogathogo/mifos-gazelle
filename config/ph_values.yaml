@@ -28,6 +28,36 @@ ph-ee-engine:
     enabled: true
     image: docker.io/openmf/ph-ee-operations-app:v1.17.1-gazelle-1.1.0
     imagePullPolicy: IfNotPresent
+    extraEnvs:
+      - name: CLOUD_AWS_S3BASEURL
+        value: "http://minio:9000"
+      - name: CLOUD_AWS_REGION_STATIC
+        valueFrom:
+          secretKeyRef:
+            name: bulk-processor-secret
+            key: aws-region
+      - name: AWS_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: bulk-processor-secret
+            key: aws-access-key
+      - name: AWS_SECRET_KEY
+        valueFrom:
+          secretKeyRef:
+            name: bulk-processor-secret
+            key: aws-secret-key
+      - name: CLOUD_AWS_CREDENTIALS_ACCESS-KEY
+        valueFrom:
+          secretKeyRef:
+            name: bulk-processor-secret
+            key: aws-access-key
+      - name: CLOUD_AWS_CREDENTIALS_SECRET-KEY
+        valueFrom:
+          secretKeyRef:
+            name: bulk-processor-secret
+            key: aws-secret-key
+      - name: APPLICATION_BUCKET-NAME
+        value: "paymenthub-ee"
     ingress:
       enabled: true
       className: nginx
@@ -465,6 +495,7 @@ ph-ee-engine:
       path: /
       hosts:
         - minio-console.mifos.gazelle.localhost
+        
   kafka:
     enabled: true
     heapOpts: "-Xms128m -Xmx256m"
