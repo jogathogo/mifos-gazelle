@@ -113,7 +113,7 @@ ph-ee-engine:
               mountPath: /exporters/
 
     zeebe-gateway:
-      enabled: false
+      enabled: true
       replicas: 1
       logLevel: debug
 
@@ -222,7 +222,7 @@ ph-ee-engine:
     deployment:
       extraEnvs:
         - name: JAVA_TOOL_OPTIONS
-          value: "-Xms64m -Xmx256m -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError"
+          value: "-Xms128m -Xmx512m -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError"
 
   connector_bulk:
     enabled: true
