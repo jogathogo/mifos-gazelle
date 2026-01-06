@@ -1,4 +1,9 @@
 
+# account-mapper:
+#   image: "openjdk:26-ea-17-jdk-trixie"  # Use OpenJDK base image
+#   imagePullPolicy: IfNotPresent
+#   enabled: false
+
 ph-ee-engine:
   # we use elastic and kibana from the infra namespace 
   elasticsearch:
@@ -9,35 +14,17 @@ ph-ee-engine:
   operations_web:
     image: docker.io/openmf/ph-ee-operations-web:gazelle-v1.1.0
 
-
-  # importer_rdbms:
-    # env:
-    #   - name: TENANTS_CONNECTIONS_GREENBANK_SCHEMA_SERVER
-    #     value: "fredmysql"
-    #   - name: TENANTS_CONNECTIONS_GORILLA_SCHEMA_SERVER
-    #     value: "fred2mysql"
-
-    # datasource:
-    #   core:
-    #     host: "mysql.infra.svc.cluster.local"
-    #     port: 3306
-    #     schema: "tenants"
-    #     username: "mifos"
-    #     password: "password"
-
-  # operations_app:
-  #   secret:
-  #     apiversion: "v1"
-  #     datasource:
-  #       # username: "mifos"
-  #       # password: "password"
-  #       host: "mysql.infra.svc.cluster.local"
-  #       # port: 3306
-  #       # schema: "tenants"
-
-  # operations:
-  #   mysql:
-  #     enabled: false
+  operations:
+    mysql:
+      enabled: true
+      image:
+        # repository: bitnamilegacy/mysql
+        tag: "5.7"
+        debug: false
+  
+  redis:
+    image:
+      repository: bitnamilegacy/redis
 
   camunda-platform:
     global:
@@ -138,10 +125,18 @@ ph-ee-engine:
           ROOT: INFO
           io.camunda.operate: DEBUG
 
+      deployment:
+      extraEnv:
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Xms64m -Xmx256m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+          
       resources:
         requests:
-          cpu: 300m
-          memory: 400Mi
+          cpu: 200m
+          memory: 300Mi
+        limits:
+          cpu: 1
+          memory: 800Mi
 
       affinity: {}
 
@@ -224,7 +219,7 @@ ph-ee-engine:
         - name: JAVA_TOOL_OPTIONS
           value: "-Xms128m -Xmx512m -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError"
 
-  connector_bulk:
+  ph_ee_bulk_processor:
     enabled: true
     image: docker.io/openmf/ph-ee-bulk-processor:v1.12.1-gazelle-1.1.0
     imagePullPolicy: IfNotPresent
@@ -233,6 +228,29 @@ ph-ee-engine:
       contactpoint: "http://ph-ee-operations-app:80"
       endpoints:
         batch_transaction: "/api/v1/batch/transactions"
+    config:
+      partylookup:
+        enable: true
+      approval:
+        enable: false
+      ordering:
+        enable: false
+        field: ""
+      splitting:
+        enable: true
+        sub_batch_size: 5
+      formatting:
+        enable: false
+        standard: "DEFAULT"
+      mergeback:
+        enable: true
+      backpressure:
+        enable: false
+      completion_threshold_check:
+        enable: true
+        completion_rate: 95
+      deduplication:
+        enabled: true      
 
     deployment:
       extraEnvs:
@@ -325,7 +343,9 @@ ph-ee-engine:
     ingress:
       hosts:
         - minio.mifos.gazelle.test
-
+    resources:
+      requests:
+        memory: 128Mi
     consoleIngress:
       enabled: true 
       ingressClassName: nginx 
@@ -334,8 +354,18 @@ ph-ee-engine:
       path: /
       hosts:
         - minio-console.mifos.gazelle.test
+  kafka:
+    enabled: true
+    heapOpts: "-Xms128m -Xmx256m"
+    resources:
+      requests:
+        memory: 500Mi
+        cpu: 200m
+      limits:
+        memory: 1Gi
+        cpu: 500m
 
-  ph-ee-connector:
+  ph_ee_connector_bulk:
     enabled: true
 
   zeebe_ops:
@@ -359,3 +389,19 @@ ph-ee-engine:
 
   ph_ee_connector_gsma:
     enabled: false
+    image: docker.io/openmf/ph-ee-connector-gsma-mm:v1.3.0-gazelle-1.1.0
+
+
+  ph_ee_connector_ams_mifos:
+    enabled: true
+    # deployment:
+    #   extraEnvs:
+    #     - name: LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_BOOT_CONTEXT_CONFIG
+    #       value: "DEBUG"
+    #     - name: LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_CORE_ENV
+    #       value: "DEBUG"
+    #     - name: LOGGING_LEVEL_ROOT
+    #       value: "DEBUG"
+        # For debugging keystore loading issues when running from hostpath mounted code
+        # - name: AMS_LOCAL_KEYSTORE_PATH
+        #   value: "/app/keystore.jks"
