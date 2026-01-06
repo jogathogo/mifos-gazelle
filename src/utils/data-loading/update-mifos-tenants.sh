@@ -1,269 +1,196 @@
-#!/bin/bash
-# automate and document how to setup new tenants to the mifos/fineract 
-# T Daly , Nov 2024
-# Notes: 
-#   #1 this script relies on the fineract-server to be up and running in a running kubernetes cluster 
-#      see: @fineract GitHub repo under doc  https://github.com/openMF/fineract/blob/develop/fineract-doc/src/docs/en/chapters/architecture/persistence.adoc 
-#   #2 currently it also relies on the fineract-server to be using the image openMF/fineract-server:develop as this image has a version of the 
-#      org.apache.fineract.infrastructure.core.service.database.DatabasePasswordEncryptor which prints the encrypted password for 
-#      both the plain text password as specified in the .csv as db_password field as well as the master password hash 
-#        
+#!/usr/bin/env bash
 
+set -euo pipefail
 
-# Default settings
-MYSQL_USER="root"
-MYSQL_PASSWORD="mysqlpw"
-MYSQL_HOST="mysql.infra.svc.cluster.local"
-MYSQL_DATABASE="fineract_tenants"
-MYSQL_IMAGE="mysql:5.7"
-FINERACT_DEFAULT_TENANTDB_MASTER_PASSWORD="fineract"
-NAMESPACE="mifosx"
-CONFIG_FILE=""
-SKIP_CONFIRM=0
-SILENT_MODE=false
-SQL_FILE="/tmp/tenant_setup.sql"
+# ==================== PATH & CONFIG ====================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+CONFIG_DIR="$BASE_DIR/config"
+DEFAULT_CSV="$CONFIG_DIR/mifos-tenant-config.csv"
 
-# Declare tenant storage
-TENANTS=() 
+MYSQL_NAMESPACE="infra"
+MIFOSX_NAMESPACE="mifosx"
+MYSQL_POD="mysql-0"
+FINERACT_DEPLOYMENT="fineract-server"
+UTILS_DIR="$BASE_DIR/src/utils"
+FINAL_DUMP="$CONFIG_DIR/fineract-db-dump-final.sql"
 
-# Show usage
+CSV_FILE="$DEFAULT_CSV"
+FORCE_RECREATE=0
+MASTER_PASSWORD="fineract"
+
+# ==================== HELPERS ====================
+
+log() { echo "$@" >&2; }
+error() { echo "❌ $@" >&2; exit 1; }
+warning() { echo "⚠️  $@" >&2; }
+
 usage() {
-    cat << EOF
-Usage: $0 [options] -f tenant_config_file
+  cat << EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Creates separate tenant databases and registers them in Fineract multi-tenancy.
 
 Options:
-    -u, --mysql-user         MySQL username (default: $MYSQL_USER)
-    -p, --mysql-password     MySQL password
-    -h, --mysql-host         MySQL host (default: $MYSQL_HOST)
-    -d, --mysql-database     MySQL database (default: $MYSQL_DATABASE)
-    -i, --mysql-image        MySQL Docker image (default: $MYSQL_IMAGE)
-    -n, --namespace          Kubernetes namespace (default: $NAMESPACE)
-    -m, --master-password    Fineract master password (default: $FINERACT_DEFAULT_TENANTDB_MASTER_PASSWORD)
-    -f, --config-file        Path to tenant configuration file (required)
-    -s, --silent             silent mode 
-    -y, --yes                Skip confirmation prompt
-    --help                   Show this help message
+  -f <file>     CSV file (default: $DEFAULT_CSV)
+  -F            Force recreate dump
+  -h            Show help
 
-Tenant Configuration File Format (CSV):
-The file should contain one tenant per line in the following format:
-
+CSV Format:
 tenant_id,tenant_identifier,tenant_name,tenant_timezone,db_host,db_port,db_name,db_user,db_password
-
-Examples:
-2,gazelle1,"Tenant for Gazelle",Australia/Adelaide,mysql.host,3306,gazelle1_user,gazelle1_db,gazelle1_pw
-3,gazelle2,"Second Tenant",UTC,mysql.host,3306,gazelle2_user,gazelle2_db,gazelle2_pw
-
 EOF
-exit 1 
+  exit 1
 }
 
-validate_tenant_config() {
-    local line="$1"
-    local id identifier name timezone db_host db_port db_name db_user db_pass
-    IFS=',' read -r id identifier name timezone db_host db_port db_name db_user db_pass <<< "$line"
-
-    # echo "Validating line: $line"
-    # echo "Fields: ID=$id, Identifier=$identifier, Name=$name, Timezone=$timezone, Host=$db_host, Port=$db_port, DB=$db_name, User=$db_user, Password=$db_pass"
-
-    # Check required fields
-    if [ -z "$id" ]; then
-        echo "Error: Missing tenant ID"
-        return 1
-    elif [ -z "$identifier" ]; then
-        echo "Error: Missing tenant identifier"
-        return 1
-    elif [ -z "$name" ]; then
-        echo "Error: Missing tenant name"
-        return 1
-    elif [ -z "$timezone" ]; then
-        echo "Error: Missing timezone"
-        return 1
-    elif [ -z "$db_host" ]; then
-        echo "Error: Missing database host"
-        return 1
-    elif [ -z "$db_port" ]; then
-        echo "Error: Missing database port"
-        return 1
-    elif [ -z "$db_name" ]; then
-        echo "Error: Missing database name"
-        return 1
-    elif [ -z "$db_user" ]; then
-        echo "Error: Missing database user"
-        return 1
-    elif [ -z "$db_pass" ]; then
-        echo "Error: Missing database password"
-        return 1
-    fi
-
-    return 0
-}
-
-
-TENANTS=() # Use a regular array
-
-check_environment() { 
-    kubectl get nodes > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        echo "Error: kubectl get nodes failed. Kubernetes cluster must be running and accessible "
-        exit 1 
-    fi
-} 
-
-check_fineract_server_running() {
-    log "Checking that a single fineract-server is up and running"
-    local fineract_pod_count
-    local fineract_pod
-
-    fineract_pod_count=$(kubectl get pods -n "$NAMESPACE" --no-headers | grep ^fineract-server | wc -l)
-    fineract_pod=$(kubectl get pods -n "$NAMESPACE" --no-headers | grep ^fineract-server | awk '{print $1}' | head -1)
-    run_state=$(kubectl get pod "$fineract_pod" -n "$NAMESPACE" --no-headers | grep fineract | awk '{print $3}' ) 
-
-    if [[ -z "$fineract_pod" ]]; then
-        echo "Error: No Fineract server pod found in namespace $NAMESPACE"
-        exit 1
-    fi
-
-    if [[ $run_state != "Running" ]]; then 
-        echo "Error: Fineract server pod in namespace $NAMESPACE is not Running"
-        exit 1
-    fi 
-}
-
-read_tenant_configs() {
-    local config_file="$1"
-    if [[ ! -f "$config_file" ]]; then
-        echo "Error: Configuration file not found: $config_file"
-        exit 1
-    fi
-
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        # Skip empty lines and comments
-        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-
-        log "Processing line: $line" # Debugging output
-
-        if validate_tenant_config "$line"; then
-            TENANTS+=("$line") # Append the line to the array
-        else
-            exit 1
-        fi
-    done < "$config_file"
-
-    log "Total tenants processed: ${#TENANTS[@]}" # Debugging output
+get_fineract_pod() {
+  kubectl get pods -n "$MIFOSX_NAMESPACE" -l app=fineract-server -o name | head -1 | sed 's/^pod\///'
 }
 
 get_encrypted_passwords() {
-    local db_password="$1"
-    local master_password="$2"
-    local fineract_pod
+  local plain="$1"
+  local pod=$(get_fineract_pod)
+  [[ -z "$pod" ]] && error "Fineract pod not found"
 
-    fineract_pod=$(kubectl get pods -n "$NAMESPACE" --no-headers | grep ^fineract-server | awk '{print $1}' | head -1)
-    local output
-    output=$(kubectl exec -n "$NAMESPACE" "$fineract_pod" -- java -cp @/app/jib-classpath-file \
-        org.apache.fineract.infrastructure.core.service.database.DatabasePasswordEncryptor \
-        "$master_password" "$db_password")
+  local output
+  output=$(kubectl exec -n "$MIFOSX_NAMESPACE" "$pod" -- java -cp @/app/jib-classpath-file \
+    org.apache.fineract.infrastructure.core.service.database.DatabasePasswordEncryptor \
+    "$MASTER_PASSWORD" "$plain" 2>/dev/null)
 
-    # Extract encrypted passwords directly
-    local db_password_hash
-    local master_password_hash
-    db_password_hash=$(echo "$output" | awk -F': ' '/The encrypted password:/ {print $2}')
-    master_password_hash=$(echo "$output" | awk -F': ' '/The master password hash is:/ {print $2}')
+  local db_hash=$(echo "$output" | grep "encrypted password" | cut -d: -f2- | xargs)
+  local master_hash=$(echo "$output" | grep "master password hash" | cut -d: -f2- | xargs)
 
-    # Return hashes in the expected format
-    echo "$db_password_hash:$master_password_hash"
+  [[ -z "$db_hash" || -z "$master_hash" ]] && error "Failed to encrypt password"
+  echo "$db_hash:$master_hash"
 }
 
-generate_tenant_sql() {
-    echo "-- Generated tenant setup SQL" > "$SQL_FILE"
+generate_sql() {
+  local sql_file="$1"
 
-    for tenant in "${TENANTS[@]}"; do
-        IFS=',' read -r id identifier name timezone db_host db_port db_name db_user db_pass <<< "$tenant"
-        #echo "Parsed fields: ID=$id, Identifier=$identifier, Name=$name, Timezone=$timezone, Host=$db_host, Port=$db_port, DB=$db_name, User=$db_user, Password=$db_pass" # Debugging
+  {
+    echo "USE fineract_tenants;"
+    echo "START TRANSACTION;"
 
-        local encrypted_passwords
-        encrypted_passwords=$(get_encrypted_passwords "$db_pass" "$FINERACT_DEFAULT_TENANTDB_MASTER_PASSWORD")
-        local db_password_hash master_password_hash
-        IFS=':' read -r db_password_hash master_password_hash <<< "$encrypted_passwords"
+    grep -v '^#' "$CSV_FILE" | grep -v '^$' | tail -n +2 | while IFS=, read -r id identifier name timezone db_host db_port db_name db_user db_pass; do
+      id=$(echo "$id" | xargs)
+      identifier=$(echo "$identifier" | xargs)
+      name=$(echo "$name" | xargs)
+      timezone=$(echo "$timezone" | xargs)
+      db_host=$(echo "$db_host" | xargs)
+      db_port=$(echo "$db_port" | xargs)
+      db_name=$(echo "$db_name" | xargs)
+      db_user=$(echo "$db_user" | xargs)
+      db_pass=$(echo "$db_pass" | xargs)
 
-        if [[ -z "$db_password_hash" || -z "$master_password_hash" ]]; then
-            echo "Error: Failed to generate encrypted passwords for tenant $identifier (ID: $id)"
-            exit 1
-        fi
-        cat << EOF >> "$SQL_FILE"
+      log "✓ Creating database and registering tenant: $name ($identifier)"
 
--- Setup for tenant $identifier (ID: $id)
-CREATE DATABASE IF NOT EXISTS $db_name; 
-DELETE FROM tenants WHERE id=$id;
-DELETE FROM tenant_server_connections WHERE id=$id;
+      local encrypted=$(get_encrypted_passwords "$db_pass")
+      local db_hash master_hash
+      IFS=':' read -r db_hash master_hash <<< "$encrypted"
 
-INSERT INTO tenant_server_connections (id, schema_name, schema_server, schema_server_port, schema_username, schema_password, auto_update, master_password_hash)
-VALUES ($id, '$db_name', '$db_host', '$db_port', '$db_user', '$db_password_hash', 1, '$master_password_hash');
+      cat << SQL
 
-INSERT INTO tenants (id, identifier, name, timezone_id, country_id, joined_date, created_date, lastmodified_date, oltp_id, report_id)
-VALUES ($id, '$identifier', '$name', '$timezone', NULL, NOW(), NOW(), NOW(), $id, $id);
-EOF
+-- Tenant: $name ($identifier)
+CREATE DATABASE IF NOT EXISTS \`$db_name\`;
+DELETE FROM tenants WHERE id = $id;
+DELETE FROM tenant_server_connections WHERE id = $id;
+
+INSERT INTO tenant_server_connections
+  (id, schema_name, schema_server, schema_server_port, schema_username, schema_password, auto_update, master_password_hash)
+VALUES
+  ($id, '$db_name', '$db_host', '$db_port', '$db_user', '$db_hash', 1, '$master_hash');
+
+INSERT INTO tenants
+  (id, identifier, name, timezone_id, joined_date, created_date, lastmodified_date, oltp_id, report_id)
+VALUES
+  ($id, '$identifier', '$name', '$timezone', NOW(), NOW(), NOW(), $id, $id);
+SQL
     done
+
+    echo "COMMIT;"
+  } > "$sql_file"
 }
 
-# Execute SQL
-execute_sql() {
-    echo "Executing sql to add tenants to fineract_tenants tables" 
+apply_sql() {
+  local sql_file="$1"
+  log "Copying SQL to MySQL pod..."
+  kubectl cp "$sql_file" "${MYSQL_NAMESPACE}/${MYSQL_POD}":/tmp/tenants.sql || error "Failed to copy SQL file to pod"
 
-    if [[ "$SILENT_MODE" == true ]]; then
-        kubectl run gazelle-mysql-client --rm -i --image="$MYSQL_IMAGE" --restart=Never -- \
-            mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < "$SQL_FILE" >/dev/null 2>&1
-    else 
-        kubectl run gazelle-mysql-client --rm -i --image="$MYSQL_IMAGE" --restart=Never -- \
-            mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < "$SQL_FILE"  && {
-        echo "SQL executed successfully."
-        } || {
-        echo "SQL execution failed."
-        exit 1
-        }   
-    fi 
+  log "Executing tenant setup SQL..."
+  kubectl exec -n "$MYSQL_NAMESPACE" "$MYSQL_POD" -- bash -c "mysql -uroot -pmysqlpw fineract_tenants < /tmp/tenants.sql" || error "SQL execution failed"
+
+  log "Cleaning up..."
+  kubectl exec -n "$MYSQL_NAMESPACE" "$MYSQL_POD" -- rm -f /tmp/tenants.sql || true
+  rm -f "$sql_file"
+
+  log "✅ Tenants registered and databases created."
 }
 
-log() {
-    if [[ "$SILENT_MODE" == false ]]; then
-        echo "$1"
-    fi
+
+enable_liquibase() {
+  log "Enabling Liquibase temporarily..."
+  kubectl patch deployment "$FINERACT_DEPLOYMENT" -n "$MIFOSX_NAMESPACE" --type=json -p='[
+    {"op": "add", "path": "/spec/template/spec/containers/0/env/-", "value": {"name": "FINERACT_LIQUIBASE_ENABLED", "value": "true"}}
+  ]'
+  kubectl rollout status deployment/"$FINERACT_DEPLOYMENT" -n "$MIFOSX_NAMESPACE" --timeout=600s
+  log "✅ Liquibase completed — schemas populated."
 }
 
-confirm_execution() {
-    if [[ "$SILENT_MODE" == false ]]; then
-        read -rp "Proceed with SQL execution? (y/n): " confirm
-        if [[ "$confirm" != "y" ]]; then
-            log "Aborting."
-            exit 1
-        fi
-    fi
+disable_liquibase() {
+  log "Disabling Liquibase..."
+  # Get current env vars, filter out FINERACT_LIQUIBASE_ENABLED, and patch back
+  local env_json=$(kubectl get deployment "$FINERACT_DEPLOYMENT" -n "$MIFOSX_NAMESPACE" -o json | \
+    jq '.spec.template.spec.containers[0].env | map(select(.name != "FINERACT_LIQUIBASE_ENABLED"))')
+
+  kubectl patch deployment "$FINERACT_DEPLOYMENT" -n "$MIFOSX_NAMESPACE" --type=json -p="[
+    {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env\", \"value\": $env_json}
+  ]" 2>/dev/null || true
+  kubectl rollout status deployment/"$FINERACT_DEPLOYMENT" -n "$MIFOSX_NAMESPACE" --timeout=300s || true
+  log "✅ Liquibase disabled."
 }
 
-# Parse options
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -u|--mysql-user) MYSQL_USER="$2"; shift ;;
-        -p|--mysql-password) MYSQL_PASSWORD="$2"; shift ;;
-        -h|--mysql-host) MYSQL_HOST="$2"; shift ;;
-        -d|--mysql-database) MYSQL_DATABASE="$2"; shift ;;
-        -i|--mysql-image) MYSQL_IMAGE="$2"; shift ;;
-        -n|--namespace) NAMESPACE="$2"; shift ;;
-        -m|--master-password) FINERACT_DEFAULT_TENANTDB_MASTER_PASSWORD="$2"; shift ;;
-        -s|--silent) SILENT_MODE=true ;;
-        -y|--yes) SKIP_CONFIRM=1 ;;
-        -f|--config-file) CONFIG_FILE="$2"; shift ;;
-        --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1"; usage; exit 1 ;;
-    esac
-    shift
+dump_database() {
+  log "Dumping final state..."
+  local dump_script="$UTILS_DIR/dump-restore-fineract-db.sh"
+  if [[ -x "$dump_script" ]]; then
+    bash "$dump_script" -d > /dev/null
+  else
+    kubectl exec -n "$MYSQL_NAMESPACE" "$MYSQL_POD" -- mysqldump -uroot -pmysqlpw --all-databases > "$FINAL_DUMP"
+  fi
+  local latest=$(ls -t "$CONFIG_DIR"/fineract-db-dump-*.sql 2>/dev/null | head -n1 || true)
+  [[ -n "$latest" && "$latest" != "$FINAL_DUMP" ]] && mv "$latest" "$FINAL_DUMP"
+  log "✅ Final dump: $FINAL_DUMP"
+}
+
+# ==================== MAIN ====================
+
+while getopts "f:Fh" opt; do
+  case $opt in
+    f) CSV_FILE="$OPTARG" ;;
+    F) FORCE_RECREATE=1 ;;
+    h) usage ;;
+    *) usage ;;
+  esac
 done
 
-[[ -z "$CONFIG_FILE" ]] && { echo "Error: Configuration file is required."; usage; exit 1; }
+[[ ! -f "$CSV_FILE" ]] && error "CSV not found: $CSV_FILE"
 
-###### Main execution ######
-check_environment
-check_fineract_server_running 
-read_tenant_configs "$CONFIG_FILE"
-generate_tenant_sql
-confirm_execution  # exists if not confirmed. 
-execute_sql $SQL_FILE
+log "=== Mifos Gazelle Tenant Setup ==="
+log "CSV: $CSV_FILE"
+
+[[ -f "$FINAL_DUMP" && $FORCE_RECREATE -eq 0 ]] && {
+  warning "Final dump exists — use -F to recreate"
+  exit 0
+}
+
+SQL_FILE=$(mktemp)
+generate_sql "$SQL_FILE"
+apply_sql "$SQL_FILE"
+
+enable_liquibase
+dump_database
+disable_liquibase
+
+log ""
+log "🎉 Success! All tenants (including redbank) created and configured."
+log "   Databases: greenbank, bluebank, redbank"
+log "   Final dump ready: $FINAL_DUMP"

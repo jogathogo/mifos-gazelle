@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Submit batch CSV file to Payment Hub bulk-processor.
-For CSV generation, use generate-example-csv-files.py
 """
 
 import requests

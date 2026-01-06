@@ -24,7 +24,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 _deterministic_mode = True          # default: deterministic
 TENANTS = {
     "bluebank": 2,
-    "greenbank": 1
+    "greenbank": 1,
+    "redbank": 1
 }
 FIRST_NAMES = [
     "Alice", "Bob", "Charlie", "Diana", "Ethan",
@@ -77,7 +78,7 @@ DATE_FORMAT = "%d %B %Y"
 LOCALE = "en"
 PRODUCT_CURRENCY_CODE = "USD"
 PRODUCT_INTEREST_RATE = 5.0
-PRODUCT_SHORTNAME = "savb"
+PRODUCT_SHORTNAME = "savb"  # Max 4 chars, shared across tenants
 DEFAULT_DEPOSIT_AMOUNT = 5000.0
 DEFAULT_PAYMENT_TYPE_ID = 1
 PAYLOAD_DATE_FORMAT_LITERAL = "dd MMMM yyyy"
@@ -127,6 +128,12 @@ def make_api_request(
             else:
                 # 4xx or other non-retryable
                 print(f"Non-retryable HTTP error: {e}", file=sys.stderr)
+                if e.response is not None:
+                    try:
+                        error_detail = e.response.json()
+                        print(f"Error details: {json.dumps(error_detail, indent=2)}", file=sys.stderr)
+                    except:
+                        print(f"Error response text: {e.response.text}", file=sys.stderr)
                 return None
 
         # -------------------------------------------------
@@ -150,21 +157,26 @@ def make_api_request(
 # ----------------------------------------------------------------------
 def get_product_id_by_shortname(headers, shortname):
     data = make_api_request("GET", SAVINGS_PRODUCTS_API_URL, headers)
-    if data and isinstance(data, list):
-        for p in data:
-            if p.get("shortName") == shortname:
-                return p.get("id")
+    if data is None:
+        print(f"WARNING: Failed to retrieve products list", file=sys.stderr)
+        return None
+    if not isinstance(data, list):
+        print(f"WARNING: Unexpected response type: {type(data)}", file=sys.stderr)
+        return None
+    for p in data:
+        if p.get("shortName") == shortname:
+            return p.get("id")
     return None
 
-def create_savings_product(headers):
-    print(f"Finding/creating product '{PRODUCT_SHORTNAME}'...", file=sys.stderr)
+def create_savings_product(headers, product_name):
+    print(f"Finding/creating product '{PRODUCT_SHORTNAME}' for {product_name}...", file=sys.stderr)
     pid = get_product_id_by_shortname(headers, PRODUCT_SHORTNAME)
     if pid:
         print(f"Using existing product ID {pid}", file=sys.stderr)
         return pid
 
     payload = {
-        "name": PRODUCT_NAME,
+        "name": product_name,
         "shortName": PRODUCT_SHORTNAME,
         "currencyCode": PRODUCT_CURRENCY_CODE,
         "digitsAfterDecimal": 2,
@@ -183,7 +195,7 @@ def create_savings_product(headers):
         if pid:
             print(f"Created product ID {pid}", file=sys.stderr)
             return pid
-    print("Failed to create product", file=sys.stderr)
+    print(f"ERROR: Failed to create product for {product_name}", file=sys.stderr)
     return None
 
 # ----------------------------------------------------------------------
@@ -460,95 +472,95 @@ def set_global_urls(domain):
     VNEXT_BASE_URL = f"http://vnextadmin.{domain}/_interop/participants/MSISDN/"
     IDENTITY_MAPPER_URL = f"https://identity-mapper.{domain}"
 
-# ----------------------------------------------------------------------
-# CSV Generation
-# ----------------------------------------------------------------------
-def generate_bulk_csv_files():
-    """Generate test CSV files for mojaloop and closedloop modes."""
-    print("\n=== Generating bulk CSV files ===", file=sys.stderr)
+# # ----------------------------------------------------------------------
+# # CSV Generation
+# # ----------------------------------------------------------------------
+# def generate_bulk_csv_files():
+#     """Generate test CSV files for mojaloop and closedloop modes."""
+#     print("\n=== Generating bulk CSV files ===", file=sys.stderr)
 
-    # Find payer (greenbank) and payees (bluebank)
-    payer = None
-    payees = []
+#     # Find payer (greenbank) and payees (bluebank)
+#     payer = None
+#     payees = []
 
-    for client in created_clients:
-        if client['tenant'] == 'greenbank':
-            payer = client
-        elif client['tenant'] == 'bluebank':
-            payees.append(client)
+#     for client in created_clients:
+#         if client['tenant'] == 'greenbank':
+#             payer = client
+#         elif client['tenant'] == 'bluebank':
+#             payees.append(client)
 
-    if not payer:
-        print("ERROR: No greenbank payer found", file=sys.stderr)
-        return
+#     if not payer:
+#         print("ERROR: No greenbank payer found", file=sys.stderr)
+#         return
 
-    if len(payees) < 2:
-        print(f"ERROR: Need at least 2 bluebank payees, found {len(payees)}", file=sys.stderr)
-        return
+#     if len(payees) < 2:
+#         print(f"ERROR: Need at least 2 bluebank payees, found {len(payees)}", file=sys.stderr)
+#         return
 
-    # Generate 4 transactions: 2 to each of the first 2 payees
-    transactions = []
-    amounts = [10.00, 15.00]  # Different amounts for variety
+#     # Generate 4 transactions: 2 to each of the first 2 payees
+#     transactions = []
+#     amounts = [10.00, 15.00]  # Different amounts for variety
 
-    for idx, payee in enumerate(payees[:2]):
-        for amount in amounts:
-            txn_id = len(transactions)
-            request_id = str(uuid.uuid4())
-            transactions.append({
-                'id': txn_id,
-                'request_id': request_id,
-                'payer_mobile': payer['mobile'],
-                'payer_account': payer['account_id'],
-                'payee_mobile': payee['mobile'],
-                'payee_account': payee['account_id'],
-                'payee_name': payee['name'],
-                'amount': amount
-            })
+#     for idx, payee in enumerate(payees[:2]):
+#         for amount in amounts:
+#             txn_id = len(transactions)
+#             request_id = str(uuid.uuid4())
+#             transactions.append({
+#                 'id': txn_id,
+#                 'request_id': request_id,
+#                 'payer_mobile': payer['mobile'],
+#                 'payer_account': payer['account_id'],
+#                 'payee_mobile': payee['mobile'],
+#                 'payee_account': payee['account_id'],
+#                 'payee_name': payee['name'],
+#                 'amount': amount
+#             })
 
-    # Generate MOJALOOP CSV
-    mojaloop_file = Path(__file__).parent / "bulk-gazelle-mojaloop-4.csv"
-    print(f"Generating {mojaloop_file}", file=sys.stderr)
+#     # Generate MOJALOOP CSV
+#     mojaloop_file = Path(__file__).parent / "bulk-gazelle-mojaloop-4.csv"
+#     print(f"Generating {mojaloop_file}", file=sys.stderr)
 
-    with open(mojaloop_file, 'w') as f:
-        # Header
-        f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note,account_number\n")
+#     with open(mojaloop_file, 'w') as f:
+#         # Header
+#         f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note,account_number\n")
 
-        # Transactions (NO trailing newline after last row)
-        for i, txn in enumerate(transactions):
-            line = f"{txn['id']},{txn['request_id']},mojaloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']},{txn['payee_account']}"
-            if i < len(transactions) - 1:
-                f.write(line + "\n")
-            else:
-                f.write(line)  # NO newline after last row
+#         # Transactions (NO trailing newline after last row)
+#         for i, txn in enumerate(transactions):
+#             line = f"{txn['id']},{txn['request_id']},mojaloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']},{txn['payee_account']}"
+#             if i < len(transactions) - 1:
+#                 f.write(line + "\n")
+#             else:
+#                 f.write(line)  # NO newline after last row
 
-    print(f"✓ Generated {mojaloop_file}", file=sys.stderr)
+#     print(f"✓ Generated {mojaloop_file}", file=sys.stderr)
 
-    # Generate CLOSEDLOOP CSV
-    closedloop_file = Path(__file__).parent / "bulk-gazelle-closedloop-4.csv"
-    print(f"Generating {closedloop_file}", file=sys.stderr)
+#     # Generate CLOSEDLOOP CSV
+#     closedloop_file = Path(__file__).parent / "bulk-gazelle-closedloop-4.csv"
+#     print(f"Generating {closedloop_file}", file=sys.stderr)
 
-    with open(closedloop_file, 'w') as f:
-        # Header
-        f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note,account_number\n")
+#     with open(closedloop_file, 'w') as f:
+#         # Header
+#         f.write("id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note,account_number\n")
 
-        # Transactions (NO trailing newline after last row)
-        for i, txn in enumerate(transactions):
-            line = f"{txn['id']},{txn['request_id']},closedloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']},{txn['payee_account']}"
-            if i < len(transactions) - 1:
-                f.write(line + "\n")
-            else:
-                f.write(line)  # NO newline after last row
+#         # Transactions (NO trailing newline after last row)
+#         for i, txn in enumerate(transactions):
+#             line = f"{txn['id']},{txn['request_id']},closedloop,MSISDN,{txn['payer_mobile']},MSISDN,{txn['payee_mobile']},{txn['amount']:.2f},USD,Payment to {txn['payee_name']},{txn['payee_account']}"
+#             if i < len(transactions) - 1:
+#                 f.write(line + "\n")
+#             else:
+#                 f.write(line)  # NO newline after last row
 
-    print(f"✓ Generated {closedloop_file}", file=sys.stderr)
+#     print(f"✓ Generated {closedloop_file}", file=sys.stderr)
 
-    # Print summary
-    print(f"\n{'='*60}", file=sys.stderr)
-    print(f"CSV files created with {len(transactions)} transactions:", file=sys.stderr)
-    print(f"  - {mojaloop_file.name}", file=sys.stderr)
-    print(f"  - {closedloop_file.name}", file=sys.stderr)
-    print(f"\nPayer: {payer['name']} ({payer['mobile']}) - greenbank account {payer['account_id']}", file=sys.stderr)
-    for idx, payee in enumerate(payees[:2]):
-        print(f"Payee {idx+1}: {payee['name']} ({payee['mobile']}) - bluebank account {payee['account_id']}", file=sys.stderr)
-    print(f"{'='*60}", file=sys.stderr)
+#     # Print summary
+#     print(f"\n{'='*60}", file=sys.stderr)
+#     print(f"CSV files created with {len(transactions)} transactions:", file=sys.stderr)
+#     print(f"  - {mojaloop_file.name}", file=sys.stderr)
+#     print(f"  - {closedloop_file.name}", file=sys.stderr)
+#     print(f"\nPayer: {payer['name']} ({payer['mobile']}) - greenbank account {payer['account_id']}", file=sys.stderr)
+#     for idx, payee in enumerate(payees[:2]):
+#         print(f"Payee {idx+1}: {payee['name']} ({payee['mobile']}) - bluebank account {payee['account_id']}", file=sys.stderr)
+#     print(f"{'='*60}", file=sys.stderr)
 
 # ----------------------------------------------------------------------
 # Main
@@ -598,9 +610,6 @@ if __name__ == "__main__":
 
         print(f"\nRegistered {success_count}/{len(all_clients)} clients", file=sys.stderr)
 
-        # Generate CSV files
-        generate_bulk_csv_files()
-
         print("\n✓ Regeneration complete!", file=sys.stderr)
         sys.exit(0)
 
@@ -625,16 +634,18 @@ if __name__ == "__main__":
         random.shuffle(unique_mobile_numbers)
 
     # ----- process each tenant -----
+    failed_tenants = []
     for tenant_id, num_clients in TENANTS.items():
         print(f"\n=== Tenant: {tenant_id} ===", file=sys.stderr)
         HEADERS["Fineract-Platform-TenantId"] = tenant_id
-        global PRODUCT_NAME
-        PRODUCT_NAME = f"{tenant_id}-savings"
+        product_name = f"{tenant_id}-savings"
 
         # product
-        product_id = create_savings_product(HEADERS)
+        product_id = create_savings_product(HEADERS, product_name)
         if not product_id:
-            print(f"Skipping tenant {tenant_id} – no product", file=sys.stderr)
+            error_msg = f"ERROR: Failed to create/find product for tenant {tenant_id}"
+            print(error_msg, file=sys.stderr)
+            failed_tenants.append(tenant_id)
             continue
 
         process_date = datetime.datetime.now().strftime(DATE_FORMAT)
@@ -685,7 +696,11 @@ if __name__ == "__main__":
 
         print(f"=== Finished tenant {tenant_id} ===\n", file=sys.stderr)
 
-    print("All tenants processed.", file=sys.stderr)
+    # ----- final status -----
+    if failed_tenants:
+        print(f"\n{'='*60}", file=sys.stderr)
+        print(f"ERROR: Failed to process {len(failed_tenants)} tenant(s): {', '.join(failed_tenants)}", file=sys.stderr)
+        print(f"{'='*60}", file=sys.stderr)
+        sys.exit(1)
 
-    # Generate bulk CSV files
-    generate_bulk_csv_files()
+    print("\n✓ All tenants processed successfully.", file=sys.stderr)

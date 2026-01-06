@@ -52,12 +52,12 @@ def get_gazelle_domain(config):
 # ----------------------------------------------------------------------
 # CSV Generation
 # ----------------------------------------------------------------------
-def generate_csv_data(mode='closedloop', payer_msisdn=None, payees=None):
+def generate_csv_data(mode='CLOSEDLOOP', payer_msisdn=None, payees=None):
     """
     Generate CSV test data for bulk transactions.
 
     Args:
-        mode: 'closedloop' or 'mojaloop'
+        mode: 'CLOSEDLOOP' or 'MOJALOOP'
         payer_msisdn: Payer phone number (defaults to DEFAULT_PAYER_MSISDN)
         payees: List of payee dictionaries (defaults to DEFAULT_PAYEES)
 
@@ -82,10 +82,9 @@ def generate_csv_data(mode='closedloop', payer_msisdn=None, payees=None):
                 'payer_identifier': payer_msisdn,
                 'payee_identifier_type': 'MSISDN',
                 'payee_identifier': payee['msisdn'],
-                'amount': f"{amount:.2f}",
+                'amount': int(amount),
                 'currency': 'USD',
-                'note': f"Payment to {payee['name']}",
-                'account_number': payee['account']
+                'note': f"Payment to {payee['name']}"
             }
 
             transactions.append(transaction)
@@ -114,10 +113,10 @@ def generate_govstack_csv_data(payees=None):
             transaction = {
                 'id': txn_id,
                 'request_id': str(uuid.uuid4()),
-                'payment_mode': 'closedloop',  # GovStack uses closedloop
+                'payment_mode': 'CLOSEDLOOP',  # GovStack uses CLOSEDLOOP
                 'payee_identifier_type': 'MSISDN',
                 'payee_identifier': payee['msisdn'],
-                'amount': f"{amount:.2f}",
+                'amount': int(amount),
                 'currency': 'USD',
                 'note': f"Payment to {payee['name']}",
                 'account_number': payee['account']
@@ -142,7 +141,7 @@ def write_csv_file(csv_path, transactions, govstack_mode=False):
             'id', 'request_id', 'payment_mode',
             'payer_identifier_type', 'payer_identifier',
             'payee_identifier_type', 'payee_identifier',
-            'amount', 'currency', 'note', 'account_number'
+            'amount', 'currency', 'note'
         ]
 
     with open(csv_path, 'w', newline='') as csvfile:
@@ -175,14 +174,14 @@ def generate_csv_files(output_dir=None, payer_msisdn=None, payees=None):
     files = {}
 
     # Generate closedloop CSV
-    closedloop_data = generate_csv_data('closedloop', payer_msisdn, payees)
+    closedloop_data = generate_csv_data('CLOSEDLOOP', payer_msisdn, payees)
     closedloop_path = output_dir / 'bulk-gazelle-closedloop-4.csv'
     write_csv_file(closedloop_path, closedloop_data, govstack_mode=False)
     files['closedloop'] = closedloop_path
     print(f"✓ Generated {closedloop_path}", file=sys.stderr)
 
     # Generate mojaloop CSV
-    mojaloop_data = generate_csv_data('mojaloop', payer_msisdn, payees)
+    mojaloop_data = generate_csv_data('MOJALOOP', payer_msisdn, payees)
     mojaloop_path = output_dir / 'bulk-gazelle-mojaloop-4.csv'
     write_csv_file(mojaloop_path, mojaloop_data, govstack_mode=False)
     files['mojaloop'] = mojaloop_path
@@ -225,8 +224,8 @@ Examples:
   ./generate-example-csv-files.py --mode closedloop
 
 Generated files:
-  - bulk-gazelle-closedloop-4.csv (Non-GovStack, closedloop mode)
-  - bulk-gazelle-mojaloop-4.csv (Non-GovStack, mojaloop mode)
+  - bulk-gazelle-closedloop-4.csv (Non-GovStack, CLOSEDLOOP mode)
+  - bulk-gazelle-mojaloop-4.csv (Non-GovStack, MOJALOOP mode)
   - bulk-gazelle-govstack-4.csv (GovStack mode, no payer columns)
         """
     )

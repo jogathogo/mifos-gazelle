@@ -5,11 +5,14 @@
 #   enabled: false
 
 ph-ee-engine:
-  # we use elastic and kibana from the infra namespace 
+  # we use elastic and kibana from the infra namespace
   elasticsearch:
     enabled: false
   kibana:
     enabled: false
+
+  global:
+    s3BaseUrl: http://minio:9000
 
   operations_web:
     enabled: true
@@ -426,6 +429,18 @@ ph-ee-engine:
               name: ph-ee-bulk-processor
               port:
                 number: 8443
+                
+  operations_app:
+    contactpoint: "http://ph-ee-operations-app:80"
+
+  ph_ee_connector_bulk:
+    extraEnvs:
+    - name: CHANNEL_CONTACTPOINT
+      value: https://ph-ee-connector-channel:8443
+    - name: CHANNEL_ENDPOINTS_BATCH-TRANSACTION
+      value: /channel/transfer
+    - name: BULK-PROCESSOR_ENDPOINTS_BATCH-EXECUTION
+      value: /batchtransactions/execution
 
   channel:
     enabled: true
@@ -509,6 +524,13 @@ ph-ee-engine:
 
   ph_ee_connector_bulk:
     enabled: true
+    extraEnvs:
+      - name: CHANNEL_CONTACTPOINT
+        value: "https://ph-ee-connector-channel:8443"
+      - name: CHANNEL_ENDPOINTS_BATCH-TRANSACTION
+        value: "/channel/transfer"
+      - name: BULK-PROCESSOR_ENDPOINTS_BATCH-EXECUTION
+        value: "/batchtransactions/execution"
 
   zeebe_ops:
     enabled: true

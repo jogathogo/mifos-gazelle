@@ -39,10 +39,16 @@ function is_app_running() {
     # Count total pods and ready pods
     total_pods=$(echo "$pod_list" | grep -c '^')
     # Modified to count pods where READY column shows all containers ready (e.g., 1/1, 2/2)
-    ready_count=$(echo "$pod_list" | awk '$2 ~ /^[0-9]+\/[0-9]+$/ && $2 !~ /0\/[0-9]+/ {print $0}' | grep -c '^')
-    
+    # Match patterns like 1/1, 2/2, etc. where both numbers are the same and non-zero
+    ready_count=$(echo "$pod_list" | awk '{split($2,a,"/"); if(a[1]==a[2] && a[1]>0) print}' | grep -c '^')
+
     # Debug: Print kubectl exit code, pod list, total pods, and ready count
     logWithVerboseCheck "$debug" debug "kubectl exit code: $exit_code, pod list: [$pod_list], total pods: $total_pods, ready pods: $ready_count"
+
+    # Temporary debugging - always output for mifosx namespace
+    if [[ "$namespace" == "mifosx" ]]; then
+        echo "DEBUG is_app_running($namespace): total_pods=$total_pods, ready_count=$ready_count, min_pods=$min_pods" >&2
+    fi
     
     # Check if command failed
     [[ $exit_code -ne 0 ]] && {
@@ -72,8 +78,8 @@ function wait_for_pods_ready() {
     STABLE_COUNT=0
     
     while [ $STABLE_COUNT -lt 3 ]; do
-      NOT_READY=$(run_as_user "kubectl get pods -n "$namespace" --no-headers | awk '$2 !~ /^([0-9]+)\/\1$/'")
-      
+      NOT_READY=$(run_as_user "kubectl get pods -n \"$namespace\" --no-headers" | awk '{split($2,a,"/"); if(a[1]!=a[2] || a[1]==0) print}')
+
       if [ -z "$NOT_READY" ]; then
         STABLE_COUNT=$((STABLE_COUNT + 1))
         echo "✅ All pods ready. Stable count: $STABLE_COUNT"

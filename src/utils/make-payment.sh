@@ -165,8 +165,11 @@ fi
 
 # Lookup client names
 echo -e "${BLUE}=== Client Lookup ===${RESET}"
+set +e  # Temporarily disable exit on error
 payer_name=$(lookup_client_name "$payer_msisdn" "$tenant_id" "payer")
-if [[ $? -ne 0 ]]; then
+payer_lookup_status=$?
+set -e  # Re-enable exit on error
+if [[ $payer_lookup_status -ne 0 ]]; then
     echo -e "${RED}Error: Unable to find payer with MSISDN $payer_msisdn in tenant $tenant_id${RESET}" >&2
     exit 1
 fi
@@ -178,7 +181,14 @@ if [[ "$payee_dfsp_id" != "$tenant_id" ]]; then
     payee_tenant="$payee_dfsp_id"
 fi
 
+set +e  # Temporarily disable exit on error
 payee_name=$(lookup_client_name "$payee_msisdn" "$payee_tenant" "payee")
+payee_lookup_status=$?
+set -e  # Re-enable exit on error
+if [[ $payee_lookup_status -ne 0 ]]; then
+    echo -e "${RED}Error: Unable to find payee with MSISDN $payee_msisdn in tenant $payee_tenant${RESET}" >&2
+    exit 1
+fi
 
 # Display payment details
 echo -e "${BLUE}=== Payment Details ===${RESET}"

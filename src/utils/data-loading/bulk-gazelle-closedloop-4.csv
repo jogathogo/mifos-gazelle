@@ -1,0 +1,5 @@
+id,request_id,payment_mode,payer_identifier_type,payer_identifier,payee_identifier_type,payee_identifier,amount,currency,note
+0,5b3f4a61-af68-4f22-bdcd-d41fcb12a58a,CLOSEDLOOP,MSISDN,0413356886,MSISDN,0495822412,10,USD,Payment to James Ramirez
+1,504a47e1-631d-45f7-b886-ef710ccc5847,CLOSEDLOOP,MSISDN,0413356886,MSISDN,0495822412,16,USD,Payment to James Ramirez
+2,f60395d3-83ad-4f00-a7f0-aefa146eded8,CLOSEDLOOP,MSISDN,0413356886,MSISDN,0424942603,15,USD,Payment to Caleb Harris
+3,6e9a977a-bf29-420b-8094-f005e2a235d0,CLOSEDLOOP,MSISDN,0413356886,MSISDN,0424942603,20,USD,Payment to Caleb Harris
