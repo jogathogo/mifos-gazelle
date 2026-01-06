@@ -16,4 +16,6 @@
     - [x] Investigate Zeebe and Kafka configuration <!-- id: 13 -->
     - [x] Prepare `debug_report.md` with findings and fixes <!-- id: 14 -->
 - [x] Create AWS Deployment Guide <!-- id: 15 -->
-- [ ] Push changes to git <!-- id: 16 -->
+- [x] Push changes to git <!-- id: 16 -->
+- [x] Compare `master` and `dev` branches <!-- id: 17 -->
+- [x] Merge `dev` into `master` <!-- id: 18 -->
